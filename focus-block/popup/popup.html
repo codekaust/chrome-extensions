@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>FocusBlock</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="../icons/icon32.png" alt="" class="brand-icon" />
+      <span class="brand-name">FocusBlock</span>
+    </div>
+    <button id="openOptions" class="icon-btn" title="Settings" aria-label="Settings">
+      <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+      </svg>
+    </button>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab active" data-tab="block">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m4 5 16 14"/></svg>
+      Block Sites
+    </button>
+    <button class="tab" data-tab="focus">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>
+      Focus Mode
+    </button>
+  </nav>
+
+  <!-- BLOCK SITES TAB -->
+  <section id="tab-block" class="panel">
+    <div class="site-hero">
+      <div id="siteFavicon" class="favicon"></div>
+      <div id="siteHost" class="site-host">—</div>
+      <div id="siteStatus" class="site-status">Checking…</div>
+      <div id="tempInfo" class="temp-info hidden"></div>
+    </div>
+
+    <div id="tempOptions" class="temp-options hidden">
+      <div class="temp-label">Need a quick break? Unblock temporarily:</div>
+      <div class="temp-buttons">
+        <button class="chip" data-min="5">5 min</button>
+        <button class="chip" data-min="15">15 min</button>
+        <button class="chip" data-min="30">30 min</button>
+      </div>
+    </div>
+
+    <div class="actions">
+      <button id="blockNow" class="btn btn-primary danger hidden">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m4 5 16 14"/></svg>
+        Block now
+      </button>
+      <button id="changeSites" class="btn btn-soft">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Change blocked sites
+      </button>
+      <button id="toggleBlock" class="btn btn-primary">Block current site</button>
+    </div>
+  </section>
+
+  <!-- FOCUS MODE TAB -->
+  <section id="tab-focus" class="panel hidden">
+    <div id="focusIdle">
+      <div class="focus-hero">
+        <div class="focus-title">Start a focus session</div>
+        <div class="focus-sub">Your blocked sites stay locked — temporary breaks are disabled until the timer ends.</div>
+      </div>
+      <div class="duration-grid">
+        <button class="dur" data-min="15">15m</button>
+        <button class="dur active" data-min="25">25m</button>
+        <button class="dur" data-min="45">45m</button>
+        <button class="dur" data-min="60">60m</button>
+        <button class="dur" data-min="90">90m</button>
+        <button class="dur" data-min="120">120m</button>
+      </div>
+      <button id="startFocus" class="btn btn-primary btn-block">Start focus</button>
+    </div>
+
+    <div id="focusActive" class="hidden">
+      <div class="focus-hero">
+        <div class="countdown" id="countdown">25:00</div>
+        <div class="focus-sub">Focus session in progress. Stay on track. 🎯</div>
+      </div>
+      <button id="stopFocus" class="btn btn-soft btn-block">End session early</button>
+    </div>
+  </section>
+
+  <div id="pwdModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title">Password required</div>
+      <p class="modal-sub" id="pwdModalSub">Enter your password to continue.</p>
+      <input type="password" id="pwdInput" class="input" placeholder="Password" autocomplete="off" />
+      <div id="pwdError" class="pwd-error hidden"></div>
+      <div class="modal-actions">
+        <button id="pwdCancel" class="btn btn-soft">Cancel</button>
+        <button id="pwdConfirm" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="blocked.css" />
+  <title>Blocked · FocusBlock</title>
+</head>
+<body>
+  <main class="card">
+    <img src="../icons/icon128.png" alt="FocusBlock" class="logo" />
+    <h1>Stay focused.</h1>
+    <p class="sub">This site is on your block list.</p>
+    <div class="site" id="site">—</div>
+    <p class="quote" id="quote"></p>
+
+    <div id="breakArea" class="break-area">
+      <div class="break-label">Really need it? Take a timed break:</div>
+      <div class="break-buttons">
+        <button class="chip" data-min="5">5 min</button>
+        <button class="chip" data-min="15">15 min</button>
+        <button class="chip" data-min="30">30 min</button>
+      </div>
+      <div id="breakError" class="break-error hidden"></div>
+    </div>
+
+    <div id="focusNote" class="focus-note hidden">
+      🎯 Focus mode is active — breaks are disabled until your session ends.
+    </div>
+  </main>
+  <script src="blocked.js"></script>
+</body>
+</html>

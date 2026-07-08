@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="options.css" />
+  <title>FocusBlock Settings</title>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="../icons/icon48.png" alt="" class="brand-icon" />
+      <span class="brand-name">FocusBlock Settings</span>
+    </div>
+    <nav class="nav">
+      <button class="nav-btn active" data-view="general">General</button>
+      <button class="nav-btn" data-view="block">Block Sites</button>
+      <button class="nav-btn" data-view="focus">Focus Mode</button>
+    </nav>
+  </header>
+
+  <main class="wrap">
+    <!-- GENERAL -->
+    <section id="view-general" class="view">
+      <h2>General Settings</h2>
+      <div class="rows">
+        <label class="row">
+          <span>Show an activity indicator on the extension icon</span>
+          <input type="checkbox" class="toggle" data-setting="activityIndicator" />
+        </label>
+        <label class="row">
+          <span>Show a clean block page instead of a motivational quote</span>
+          <input type="checkbox" class="toggle" data-setting="cleanBlockPage" />
+        </label>
+        <label class="row">
+          <span>Show a notification when a focus session finishes</span>
+          <input type="checkbox" class="toggle" data-setting="notifyCycle" />
+        </label>
+      </div>
+
+      <h2 class="mt">Password Protection</h2>
+      <p class="muted">Make it harder to unblock sites, edit your list, or end focus early.</p>
+      <p class="warn">The password cannot be recovered if lost or forgotten.</p>
+      <div id="pwdStatus" class="pwd-status"></div>
+      <div class="pwd-form">
+        <input type="password" id="oldPwd" class="input hidden" placeholder="Current password" autocomplete="off" />
+        <input type="password" id="newPwd" class="input" placeholder="New password (leave blank to remove)" autocomplete="off" />
+        <button id="savePwd" class="btn btn-primary">Save password</button>
+      </div>
+      <div id="pwdMsg" class="msg hidden"></div>
+    </section>
+
+    <!-- BLOCK SITES -->
+    <section id="view-block" class="view hidden">
+      <h2>Blocked Sites</h2>
+      <p class="muted">Add the domains you want blocked. Subdomains are covered automatically.</p>
+      <div class="add-row">
+        <input type="text" id="newSite" class="input" placeholder="e.g. youtube.com" />
+        <button id="addSite" class="btn btn-primary">Add</button>
+      </div>
+      <ul id="siteList" class="site-list"></ul>
+      <p id="emptyList" class="muted hidden">No sites blocked yet.</p>
+    </section>
+
+    <!-- FOCUS -->
+    <section id="view-focus" class="view hidden">
+      <h2>Focus Mode</h2>
+      <p class="muted">
+        Start a focus session from the toolbar popup. While a session is running,
+        every site on your block list is locked and temporary breaks are disabled —
+        so you can’t talk yourself into “just five minutes.”
+      </p>
+      <div id="focusState" class="focus-state"></div>
+      <p class="muted mt">
+        Default durations are 15 / 25 / 45 / 60 / 90 / 120 minutes, selectable in the popup.
+      </p>
+    </section>
+  </main>
+
+  <div id="gateModal" class="modal hidden">
+    <div class="modal-card">
+      <div class="modal-title">Password required</div>
+      <p class="modal-sub" id="gateSub">Enter your password to continue.</p>
+      <input type="password" id="gateInput" class="input" placeholder="Password" autocomplete="off" />
+      <div id="gateError" class="msg hidden"></div>
+      <div class="modal-actions">
+        <button id="gateCancel" class="btn btn-soft">Cancel</button>
+        <button id="gateConfirm" class="btn btn-primary">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
