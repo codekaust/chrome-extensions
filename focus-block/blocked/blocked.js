@@ -41,7 +41,40 @@ async function boot() {
   if (state.settings?.cleanBlockPage) {
     document.getElementById('quote').classList.add('hidden');
   }
+  // A focus-only site frees up the instant the session ends — schedule the
+  // redirect for that moment so it doesn't wait on the next storage change.
+  if (isFocusOnly && focusActive) {
+    const msLeft = state.focus.endsAt - Date.now();
+    setTimeout(maybeRedirect, Math.max(0, msLeft) + 300);
+  }
 }
+
+// Is this site still blocked right now, given focus + temp breaks? Mirrors the
+// service worker's computeEffectiveBlocked for the single site we're showing.
+function stillBlocked(state) {
+  const t = Date.now();
+  const focusActive = state.focus.active && state.focus.endsAt > t;
+  if ((state.blockedSites || []).includes(site)) {
+    if (focusActive) return true;                 // always-blocked, breaks ignored in focus
+    const until = state.tempUnblocks?.[site];
+    return !(until && until > t);                 // allowed only during an active break
+  }
+  if ((state.focusSites || []).includes(site)) return focusActive;
+  return false;
+}
+
+// When the site stops being blocked (focus ends, unblocked elsewhere, or a
+// break starts), send the user back to where they were trying to go.
+async function maybeRedirect() {
+  if (!site) return;
+  const res = await chrome.runtime.sendMessage({ type: 'getState' });
+  if (res?.state && !stillBlocked(res.state)) {
+    location.href = `https://${site}`;
+  }
+}
+
+// React to focus ending / list changes live, without needing a manual refresh.
+chrome.storage.onChanged.addListener(() => { maybeRedirect(); });
 
 document.querySelectorAll('.chip').forEach((chip) => {
   chip.addEventListener('click', async () => {

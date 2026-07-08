@@ -45,8 +45,13 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
 
 ## Per-extension notes
 
-- **focus-block** — Site blocking via `declarativeNetRequest` dynamic rules,
-  focus/break timers via `alarms`, and per-domain active-time usage tracking
+- **focus-block** — Site blocking via `declarativeNetRequest` dynamic rules
+  **plus** an active `chrome.tabs.update` redirect layer (`guardTab` on
+  `tabs.onUpdated` for new navigations, `enforceOpenTabs` on every rule
+  recompute for already-open tabs). The redirect layer is essential: PWAs with
+  their own service worker (x.com, mail.google.com) serve navigations from cache
+  so DNR never sees them. Both layers match subdomains (`matchBlocked`).
+  Focus/break timers via `alarms`, and per-domain active-time usage tracking
   (gated on window focus + http(s) tab + non-idle input). Has a redirect
   `blocked/` page. State shape and constants are documented at the top of
   `src/background.js`.

@@ -131,6 +131,42 @@ function buildStats(state, t) {
 }
 
 // ---------- rule computation ----------
+// The set of domains that should be blocked right now, given focus + temp breaks:
+//  • always-blocked sites: enforced always (minus active temp-breaks, which
+//    are ignored while a focus session runs);
+//  • focus-only sites: enforced only while a focus session is active.
+export function computeEffectiveBlocked(state, t) {
+  const focusActive = state.focus.active && state.focus.endsAt && state.focus.endsAt > t;
+  const temp = state.tempUnblocks || {};
+  const effective = [];
+  for (const dom of state.blockedSites) {
+    if (focusActive) { effective.push(dom); continue; }
+    const until = temp[dom];
+    if (!(until && until > t)) effective.push(dom);
+  }
+  if (focusActive) {
+    for (const dom of state.focusSites) {
+      if (!effective.includes(dom)) effective.push(dom);
+    }
+  }
+  return effective;
+}
+
+function blockPageUrl(dom) {
+  return chrome.runtime.getURL(`blocked/blocked.html?site=${encodeURIComponent(dom)}`);
+}
+
+// Which blocked entry (if any) covers this domain? Matches the entry itself and
+// its subdomains (e.g. "x.com" covers "mobile.x.com"), mirroring how the
+// declarativeNetRequest `requestDomains` condition behaves.
+export function matchBlocked(dom, blockedSet) {
+  if (!dom) return null;
+  for (const b of blockedSet) {
+    if (dom === b || dom.endsWith(`.${b}`)) return b;
+  }
+  return null;
+}
+
 async function recomputeRules() {
   const state = await getState();
   const t = now();
@@ -155,22 +191,7 @@ async function recomputeRules() {
   }
 
   const focusActive = focus.active && focus.endsAt && focus.endsAt > t;
-
-  // Effective blocked set:
-  //  • always-blocked sites: enforced always (minus active temp-breaks, which
-  //    are ignored while a focus session runs);
-  //  • focus-only sites: enforced only while a focus session is active.
-  const effective = [];
-  for (const dom of state.blockedSites) {
-    if (focusActive) { effective.push(dom); continue; }
-    const until = temp[dom];
-    if (!(until && until > t)) effective.push(dom);
-  }
-  if (focusActive) {
-    for (const dom of state.focusSites) {
-      if (!effective.includes(dom)) effective.push(dom);
-    }
-  }
+  const effective = computeEffectiveBlocked({ ...state, tempUnblocks: temp, focus }, t);
 
   const rules = effective.map((dom, i) => ({
     id: i + 1,
@@ -193,8 +214,47 @@ async function recomputeRules() {
     addRules: rules,
   });
 
+  // DNR redirects only fire on *new* network navigations, and sites with their
+  // own service worker (x.com, mail.google.com, …) can serve a navigation from
+  // cache so DNR never sees it. So we also actively redirect any already-open
+  // tab that's sitting on a now-blocked domain — reliable regardless of DNR.
+  await enforceOpenTabs(effective);
+
   await updateBadge(state.settings, focusActive, effective.length);
   await scheduleNextAlarm(temp, focus);
+}
+
+// Send every open http(s) tab that's on a currently-blocked domain to the block
+// page. Block-page tabs are chrome-extension:// URLs (excluded by the query and
+// by normalizeDomain), so they never match again — no redirect loop.
+async function enforceOpenTabs(blockedSet) {
+  if (!blockedSet.length || !chrome.tabs?.query) return;
+  let tabs;
+  try {
+    tabs = await chrome.tabs.query({ url: ['http://*/*', 'https://*/*'] });
+  } catch {
+    return;
+  }
+  for (const tab of tabs || []) {
+    const hit = matchBlocked(normalizeDomain(tab.url), blockedSet);
+    if (hit && tab.id != null) {
+      try { await chrome.tabs.update(tab.id, { url: blockPageUrl(hit) }); } catch { /* tab gone */ }
+    }
+  }
+}
+
+// Navigation-time guard: if a tab navigates to a blocked domain, redirect it to
+// the block page. This is the reliable backstop for service-worker-served pages
+// that slip past the declarativeNetRequest rule.
+async function guardTab(tabId, url) {
+  if (!/^https?:\/\//.test(url || '')) return;
+  const dom = normalizeDomain(url);
+  if (!dom) return;
+  const state = await getState();
+  const hit = matchBlocked(dom, computeEffectiveBlocked(state, now()));
+  if (hit) {
+    try { await chrome.tabs.update(tabId, { url: blockPageUrl(hit) }); } catch { /* tab gone */ }
+  }
 }
 
 async function updateBadge(settings, focusActive, count) {
@@ -397,7 +457,8 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // usage-tracking signals
 chrome.tabs.onActivated.addListener(() => updateSession());
-chrome.tabs.onUpdated.addListener((_id, info, tab) => {
+chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
+  if (info.url) guardTab(tabId, info.url);   // enforce blocks as soon as a nav starts
   if (tab.active && (info.url || info.status === 'complete')) updateSession();
 });
 chrome.windows.onFocusChanged.addListener(() => updateSession());

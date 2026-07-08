@@ -4,6 +4,7 @@
 
 let alarmHandler = null;
 let msgHandler = null;
+let updatedHandler = null;
 const store = {};
 let dynamicRules = [];
 let badgeText = '';
@@ -13,6 +14,8 @@ const notifications = [];
 let mockWin = { id: 1, focused: true };
 let mockTabs = { 1: [{ active: true, url: 'https://example.com/x' }] };
 let mockIdle = 'active';
+let mockAllTabs = [];        // returned for url-pattern queries (enforceOpenTabs)
+let updatedTabs = [];        // { id, url } passed to chrome.tabs.update
 
 globalThis.chrome = {
   storage: {
@@ -43,9 +46,13 @@ globalThis.chrome = {
   },
   notifications: { create(_id, opts) { notifications.push(opts ?? _id); } },
   tabs: {
-    async query({ windowId }) { return mockTabs[windowId] || []; },
+    async query({ windowId, url } = {}) {
+      if (url) return mockAllTabs;            // url-pattern query → enforceOpenTabs
+      return mockTabs[windowId] || [];
+    },
+    async update(id, props) { updatedTabs.push({ id, ...props }); },
     onActivated: { addListener() {} },
-    onUpdated: { addListener() {} },
+    onUpdated: { addListener(fn) { updatedHandler = fn; } },
   },
   windows: {
     async getLastFocused() { return mockWin; },
@@ -182,6 +189,42 @@ assert(blockedDomains().includes('twitter.com'), 'after switching, site is block
 await dispatch({ type: 'unblockSite', domain: 'twitter.com' });
 assert(!store.blockedSites.includes('twitter.com') && !store.focusSites.includes('twitter.com'),
   'unblock removes the site from both lists');
+
+// --- already-open tabs get redirected when a rule starts blocking them ---
+console.log('enforce open tabs');
+mockAllTabs = [
+  { id: 11, url: 'https://x.com/home' },        // will be blocked during focus
+  { id: 12, url: 'https://news.ycombinator.com/' }, // never blocked
+  { id: 13, url: 'https://mobile.x.com/home' }, // subdomain of a blocked site
+];
+await dispatch({ type: 'blockSite', domain: 'x.com', mode: 'focus' });
+updatedTabs = [];
+await dispatch({ type: 'startFocus', minutes: 25 });
+const redirectedIds = updatedTabs.map((u) => u.id);
+assert(redirectedIds.includes(11), 'open tab on a newly-blocked site is redirected at focus start');
+assert(updatedTabs.find((u) => u.id === 11)?.url.includes('site=x.com'),
+  'redirect points at the block page for that site');
+assert(!redirectedIds.includes(12), 'tab on an allowed site is left alone');
+assert(redirectedIds.includes(13), 'subdomain of a blocked site is also redirected');
+await dispatch({ type: 'stopFocus' });
+mockAllTabs = [];
+
+// navigation-time guard redirects a fresh navigation to a blocked site
+console.log('navigation guard');
+const flush = () => new Promise((r) => setTimeout(r, 0)); // let async guardTab settle
+await dispatch({ type: 'blockSite', domain: 'x.com', mode: 'always' });
+updatedTabs = [];
+updatedHandler(99, { url: 'https://x.com/anything' }, { active: true });
+await flush();
+assert(updatedTabs.some((u) => u.id === 99 && u.url.includes('site=x.com')),
+  'navigating to a blocked site is redirected to the block page');
+updatedTabs = [];
+// block page / extension URLs must never be re-redirected (no loop)
+updatedHandler(98, { url: 'chrome-extension://abc/blocked/blocked.html?site=x.com' }, { active: true });
+updatedHandler(97, { url: 'https://news.ycombinator.com/' }, { active: true });
+await flush();
+assert(updatedTabs.length === 0, 'allowed sites and the block page are not redirected');
+await dispatch({ type: 'unblockSite', domain: 'x.com' });
 
 // --- password gating ---
 console.log('password protection');
