@@ -83,14 +83,29 @@ document.getElementById('savePwd').addEventListener('click', async () => {
   msg.classList.remove('hidden');
 });
 
+// ---------- usage data ----------
+document.getElementById('clearStats').addEventListener('click', async () => {
+  const msg = document.getElementById('clearMsg');
+  const res = await gatedSend(
+    { type: 'clearStats' },
+    'Enter your password to clear your usage history.'
+  );
+  if (res?.ok) {
+    msg.textContent = 'Usage history cleared.';
+    msg.className = 'msg ok';
+    msg.classList.remove('hidden');
+  }
+});
+
 // ---------- block list ----------
 document.getElementById('addSite').addEventListener('click', addSite);
 document.getElementById('newSite').addEventListener('keydown', (e) => { if (e.key === 'Enter') addSite(); });
 async function addSite() {
   const input = document.getElementById('newSite');
+  const mode = document.getElementById('newMode').value;
   const dom = normalize(input.value);
   if (!dom) return;
-  await send({ type: 'blockSite', domain: dom });
+  await send({ type: 'blockSite', domain: dom, mode });
   input.value = '';
   await refresh();
 }
@@ -103,11 +118,16 @@ async function removeSite(dom) {
   await refresh();
 }
 
-function renderList() {
-  const ul = document.getElementById('siteList');
+async function switchMode(dom, mode) {
+  await send({ type: 'blockSite', domain: dom, mode });
+  await refresh();
+}
+
+// Render one list (mode = 'always' | 'focus') into its <ul> with switch/remove.
+function renderOneList(list, ulId, emptyId, mode) {
+  const ul = document.getElementById(ulId);
   ul.innerHTML = '';
-  const list = state.blockedSites;
-  document.getElementById('emptyList').classList.toggle('hidden', list.length > 0);
+  document.getElementById(emptyId).classList.toggle('hidden', list.length > 0);
   for (const dom of list) {
     const li = document.createElement('li');
     const host = document.createElement('div');
@@ -115,13 +135,28 @@ function renderList() {
     const img = document.createElement('img');
     img.src = `https://www.google.com/s2/favicons?domain=${dom}&sz=64`;
     host.append(img, document.createTextNode(dom));
+
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const swap = document.createElement('button');
+    swap.className = 'linkbtn';
+    swap.textContent = mode === 'always' ? 'During Focus' : 'Always';
+    swap.title = mode === 'always' ? 'Only block during focus sessions' : 'Block all the time';
+    swap.addEventListener('click', () => switchMode(dom, mode === 'always' ? 'focus' : 'always'));
     const rm = document.createElement('button');
     rm.className = 'remove';
     rm.textContent = 'Remove';
     rm.addEventListener('click', () => removeSite(dom));
-    li.append(host, rm);
+    actions.append(swap, rm);
+
+    li.append(host, actions);
     ul.append(li);
   }
+}
+
+function renderList() {
+  renderOneList(state.blockedSites, 'alwaysList', 'alwaysEmpty', 'always');
+  renderOneList(state.focusSites, 'focusList', 'focusEmpty', 'focus');
 }
 
 // ---------- render ----------

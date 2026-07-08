@@ -13,9 +13,10 @@ ever leaving your machine.
 
 ## Features
 
-- **Block any site** — one click from the toolbar popup, or add domains in
-  Settings. Subdomains are covered automatically (`youtube.com` also blocks
-  `m.youtube.com`).
+- **Two block modes** — block a site **Always** (locked all the time) or
+  **During Focus only** (usable normally, but locked whenever a focus session is
+  running). Set it in one click from the popup, or manage both lists in Settings.
+  Subdomains are covered automatically (`youtube.com` also blocks `m.youtube.com`).
 - **A calm block page** — blocked sites redirect to a friendly page with a
   focus quote (switchable to a clean, quote-free page in Settings).
 - **Timed breaks** — need a site for a minute? Unblock it for **5, 15, or 30
@@ -25,13 +26,18 @@ ever leaving your machine.
   While it runs, your whole block list is locked *and temporary breaks are
   disabled* — so you can't talk yourself into "just five minutes." A live
   countdown shows in the popup, with an optional notification when you finish.
+- **Usage insights** — a **Stats** tab tracks your *active* time per site
+  (only while the tab is focused and you're actually at the keyboard). See
+  today's total, a 7-day bar chart, and your top sites with visual bars — so
+  you can spot what's worth blocking. Tracking is on by default and can be
+  toggled or cleared in Settings.
 - **Password protection** — optionally require a password to unblock sites,
   edit your list, or end a focus session early, so it's harder to give in to
   impulse.
 - **Activity indicator** — an optional badge on the toolbar icon shows when
   blocking is active.
 - **100% local & private** — everything is stored in `chrome.storage.local`.
-  No accounts, no servers, no tracking.
+  No accounts, no servers, nothing uploaded.
 
 ## Install (load unpacked)
 
@@ -80,15 +86,27 @@ state is changed, so the popup and options pages can't bypass it.
 ```
 focus-block/
 ├── manifest.json          # MV3 manifest
+├── DESIGN.md              # the design system every surface follows
 ├── src/
-│   └── background.js       # service worker: state, rules, timers, messaging
-├── popup/                  # toolbar popup (Block Sites + Focus Mode tabs)
+│   └── background.js       # service worker: state, rules, timers, usage, messaging
+├── styles/
+│   └── app.css             # shared design-system stylesheet (tokens + components)
+├── popup/                  # toolbar popup (Block · Focus · Stats tabs)
 ├── options/                # full settings page
 ├── blocked/                # the page shown when a site is blocked
 ├── icons/                  # generated PNG icons (16/32/48/128)
 └── scripts/
-    └── gen-icons.mjs        # regenerates the icons (pure Node, no deps)
+    ├── gen-icons.mjs        # regenerates the icons (pure Node, no deps)
+    └── test.mjs             # mocked-chrome logic tests for the service worker
 ```
+
+## Design
+
+The whole UI is driven by one design system — see **[`DESIGN.md`](./DESIGN.md)**.
+Every surface links a single stylesheet (`styles/app.css`) that defines the
+tokens (color, spacing, radius, elevation) and components (buttons, tabs,
+toggles, chips, cards, charts). Nothing is styled ad-hoc, so the popup, options
+page, and block page stay perfectly consistent.
 
 ## Permissions
 
@@ -96,7 +114,8 @@ focus-block/
 | --- | --- |
 | `storage` | Save your block list, settings, and focus state locally. |
 | `tabs` | Read the current tab's URL to block/unblock it and reload after changes. |
-| `alarms` | Re-block sites when a timed break or focus session ends. |
+| `alarms` | Re-block sites when a timed break or focus session ends, and flush usage periodically. |
+| `idle` | Pause usage tracking when you step away, so only *active* time is counted. |
 | `declarativeNetRequest` | Redirect blocked sites to the block page. |
 | `notifications` | Notify you when a focus session finishes. |
 | `host_permissions: <all_urls>` | Needed so blocking rules can apply to any site you choose. |

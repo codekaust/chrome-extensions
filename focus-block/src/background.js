@@ -1,7 +1,8 @@
 // FocusBlock service worker — owns all state, blocking rules, timers & notifications.
 
 const DEFAULTS = {
-  blockedSites: [],          // array of hostname strings, e.g. "youtube.com"
+  blockedSites: [],          // always blocked — hostnames, e.g. "youtube.com"
+  focusSites: [],            // blocked only while a focus session is active
   tempUnblocks: {},          // { hostname: endsAtEpochMs }
   focus: { active: false, endsAt: null, durationMin: 25 },
   settings: {
@@ -10,9 +11,16 @@ const DEFAULTS = {
     notifyCycle: true,
     soundCycle: false,
     startPaused: false,
+    trackUsage: true,        // measure active time per site
   },
   password: null,            // { hash } sha-256 hex, or null
+  usage: {},                 // { "YYYY-MM-DD": { domain: seconds } }
+  session: null,             // { domain, since } — the in-progress active session
 };
+
+const IDLE_THRESHOLD = 30;   // seconds of no input before we stop counting
+const MAX_TICK = 130;        // ignore deltas larger than this (sleep/suspend gaps)
+const RETAIN_DAYS = 30;      // keep this many days of usage history
 
 // ---------- storage helpers ----------
 async function getState() {
@@ -43,6 +51,85 @@ function now() {
   return Date.now();
 }
 
+// ---------- usage tracking ----------
+function dayKey(ts) {
+  const d = new Date(ts);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// What domain (if any) is the user *actively* viewing right now?
+// Active := a focused browser window, an http(s) tab, and non-idle input.
+async function computeActiveDomain() {
+  const state = await getState();
+  if (!state.settings.trackUsage) return null;
+  let win;
+  try { win = await chrome.windows.getLastFocused(); } catch { return null; }
+  if (!win || !win.focused) return null;
+  let tabs;
+  try { tabs = await chrome.tabs.query({ active: true, windowId: win.id }); } catch { return null; }
+  const tab = tabs && tabs[0];
+  if (!tab || !/^https?:\/\//.test(tab.url || '')) return null;
+  let idle = 'active';
+  try { idle = await chrome.idle.queryState(IDLE_THRESHOLD); } catch { /* keep active */ }
+  if (idle !== 'active') return null;
+  return normalizeDomain(tab.url);
+}
+
+// Credit elapsed time to the current session's domain, then advance `since`.
+async function flushUsage(t) {
+  const state = await getState();
+  if (!state.session) return;
+  const elapsed = (t - state.session.since) / 1000;
+  const usage = { ...state.usage };
+  if (elapsed > 0 && elapsed <= MAX_TICK) {
+    const day = dayKey(t);
+    usage[day] = { ...(usage[day] || {}) };
+    usage[day][state.session.domain] =
+      (usage[day][state.session.domain] || 0) + elapsed;
+  }
+  pruneUsage(usage, t);
+  await setState({ usage, session: { domain: state.session.domain, since: t } });
+}
+
+function pruneUsage(usage, t) {
+  const cutoff = dayKey(t - RETAIN_DAYS * 86_400_000);
+  for (const day of Object.keys(usage)) {
+    if (day < cutoff) delete usage[day];
+  }
+}
+
+// Flush, then re-evaluate what we should be tracking.
+async function updateSession() {
+  const t = now();
+  await flushUsage(t);
+  const domain = await computeActiveDomain();
+  await setState({ session: domain ? { domain, since: t } : null });
+}
+
+function buildStats(state, t) {
+  const today = dayKey(t);
+  const todayMap = state.usage[today] || {};
+  const todayList = Object.entries(todayMap)
+    .map(([domain, seconds]) => ({ domain, seconds: Math.round(seconds) }))
+    .sort((a, b) => b.seconds - a.seconds);
+  const todayTotal = todayList.reduce((a, b) => a + b.seconds, 0);
+
+  // last 7 days (oldest → newest) for the bar chart
+  const days = [];
+  let weekTotal = 0;
+  for (let i = 6; i >= 0; i--) {
+    const key = dayKey(t - i * 86_400_000);
+    const map = state.usage[key] || {};
+    const total = Math.round(Object.values(map).reduce((a, b) => a + b, 0));
+    days.push({ key, total });
+    weekTotal += total;
+  }
+  return { today: todayList, todayTotal, weekTotal, days };
+}
+
 // ---------- rule computation ----------
 async function recomputeRules() {
   const state = await getState();
@@ -69,12 +156,21 @@ async function recomputeRules() {
 
   const focusActive = focus.active && focus.endsAt && focus.endsAt > t;
 
-  // effective blocked = blocklist minus active temp-unblocks (temp ignored during focus)
-  const effective = state.blockedSites.filter((dom) => {
-    if (focusActive) return true;
+  // Effective blocked set:
+  //  • always-blocked sites: enforced always (minus active temp-breaks, which
+  //    are ignored while a focus session runs);
+  //  • focus-only sites: enforced only while a focus session is active.
+  const effective = [];
+  for (const dom of state.blockedSites) {
+    if (focusActive) { effective.push(dom); continue; }
     const until = temp[dom];
-    return !(until && until > t);
-  });
+    if (!(until && until > t)) effective.push(dom);
+  }
+  if (focusActive) {
+    for (const dom of state.focusSites) {
+      if (!effective.includes(dom)) effective.push(dom);
+    }
+  }
 
   const rules = effective.map((dom, i) => ({
     id: i + 1,
@@ -154,11 +250,15 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case 'blockSite': {
         const dom = normalizeDomain(msg.domain);
         if (!dom) return sendResponse({ ok: false, error: 'Invalid site' });
-        if (!state.blockedSites.includes(dom)) {
-          await setState({ blockedSites: [...state.blockedSites, dom] });
-        }
+        const mode = msg.mode === 'focus' ? 'focus' : 'always';
+        // a site lives in exactly one list — moving modes removes it from the other
+        const blocked = state.blockedSites.filter((d) => d !== dom);
+        const focusList = state.focusSites.filter((d) => d !== dom);
+        if (mode === 'always') blocked.push(dom);
+        else focusList.push(dom);
+        await setState({ blockedSites: blocked, focusSites: focusList });
         await recomputeRules();
-        sendResponse({ ok: true });
+        sendResponse({ ok: true, mode });
         break;
       }
       case 'unblockSite': {
@@ -166,9 +266,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const gate = await requirePassword(state, msg.password);
         if (!gate.ok) return sendResponse(gate);
         const list = state.blockedSites.filter((d) => d !== dom);
+        const focusList = state.focusSites.filter((d) => d !== dom);
         const temp = { ...state.tempUnblocks };
         delete temp[dom];
-        await setState({ blockedSites: list, tempUnblocks: temp });
+        await setState({ blockedSites: list, focusSites: focusList, tempUnblocks: temp });
         await recomputeRules();
         sendResponse({ ok: true });
         break;
@@ -243,6 +344,19 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         sendResponse(gate);
         break;
       }
+      case 'getStats': {
+        await updateSession(); // count the in-progress session up to now
+        const fresh = await getState();
+        sendResponse({ ok: true, stats: buildStats(fresh, now()) });
+        break;
+      }
+      case 'clearStats': {
+        const gate = await requirePassword(state, msg.password);
+        if (!gate.ok) return sendResponse(gate);
+        await setState({ usage: {}, session: null });
+        sendResponse({ ok: true });
+        break;
+      }
       default:
         sendResponse({ ok: false, error: 'Unknown message' });
     }
@@ -259,11 +373,28 @@ async function requirePassword(state, provided) {
 }
 
 // ---------- lifecycle ----------
-chrome.runtime.onInstalled.addListener(() => recomputeRules());
-chrome.runtime.onStartup.addListener(() => recomputeRules());
+function bootstrap() {
+  recomputeRules();
+  try { chrome.idle.setDetectionInterval(IDLE_THRESHOLD); } catch { /* ignore */ }
+  chrome.alarms.create('flush', { periodInMinutes: 1 });
+  updateSession();
+}
+
+chrome.runtime.onInstalled.addListener(bootstrap);
+chrome.runtime.onStartup.addListener(bootstrap);
+
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'recompute') recomputeRules();
+  if (alarm.name === 'flush') updateSession();
 });
 
-// keep rules fresh when popup/options mutate storage directly (defensive)
-recomputeRules();
+// usage-tracking signals
+chrome.tabs.onActivated.addListener(() => updateSession());
+chrome.tabs.onUpdated.addListener((_id, info, tab) => {
+  if (tab.active && (info.url || info.status === 'complete')) updateSession();
+});
+chrome.windows.onFocusChanged.addListener(() => updateSession());
+chrome.idle.onStateChanged.addListener(() => updateSession());
+
+// keep rules fresh + start tracking when the worker spins up
+bootstrap();

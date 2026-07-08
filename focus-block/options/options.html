@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="options.css" />
+  <link rel="stylesheet" href="../styles/app.css" />
   <title>FocusBlock Settings</title>
 </head>
-<body>
+<body class="fb-options">
   <header class="topbar">
     <div class="brand">
       <img src="../icons/icon48.png" alt="" class="brand-icon" />
@@ -36,7 +36,19 @@
           <span>Show a notification when a focus session finishes</span>
           <input type="checkbox" class="toggle" data-setting="notifyCycle" />
         </label>
+        <label class="row">
+          <span>Track my active time per site (shown in the Stats tab)</span>
+          <input type="checkbox" class="toggle" data-setting="trackUsage" />
+        </label>
       </div>
+
+      <h2 class="mt">Usage Data</h2>
+      <p class="muted">
+        Time is tracked only while a tab is focused and you’re active. Everything
+        stays on this device — nothing is uploaded.
+      </p>
+      <button id="clearStats" class="btn btn-soft">Clear all usage history</button>
+      <div id="clearMsg" class="msg hidden"></div>
 
       <h2 class="mt">Password Protection</h2>
       <p class="muted">Make it harder to unblock sites, edit your list, or end focus early.</p>
@@ -53,13 +65,33 @@
     <!-- BLOCK SITES -->
     <section id="view-block" class="view hidden">
       <h2>Blocked Sites</h2>
-      <p class="muted">Add the domains you want blocked. Subdomains are covered automatically.</p>
+      <p class="muted">
+        Add domains to block. <strong>Always</strong> blocks a site all the time;
+        <strong>During Focus</strong> lets you use it normally but blocks it while a
+        focus session runs. Subdomains are covered automatically.
+      </p>
       <div class="add-row">
         <input type="text" id="newSite" class="input" placeholder="e.g. youtube.com" />
+        <select id="newMode" class="input select">
+          <option value="always">Always</option>
+          <option value="focus">During Focus</option>
+        </select>
         <button id="addSite" class="btn btn-primary">Add</button>
       </div>
-      <ul id="siteList" class="site-list"></ul>
-      <p id="emptyList" class="muted hidden">No sites blocked yet.</p>
+
+      <h3 class="list-title">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m4 5 16 14"/></svg>
+        Always blocked
+      </h3>
+      <ul id="alwaysList" class="site-list"></ul>
+      <p id="alwaysEmpty" class="muted small hidden">Nothing blocked all the time yet.</p>
+
+      <h3 class="list-title mt">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/></svg>
+        Blocked during Focus
+      </h3>
+      <ul id="focusList" class="site-list"></ul>
+      <p id="focusEmpty" class="muted small hidden">No focus-only sites yet.</p>
     </section>
 
     <!-- FOCUS -->
@@ -67,8 +99,9 @@
       <h2>Focus Mode</h2>
       <p class="muted">
         Start a focus session from the toolbar popup. While a session is running,
-        every site on your block list is locked and temporary breaks are disabled —
-        so you can’t talk yourself into “just five minutes.”
+        both your <strong>always-blocked</strong> and <strong>focus-only</strong>
+        sites are locked and temporary breaks are disabled — so you can’t talk
+        yourself into “just five minutes.”
       </p>
       <div id="focusState" class="focus-state"></div>
       <p class="muted mt">

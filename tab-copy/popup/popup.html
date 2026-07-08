@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TabCopy</title>
+    <link rel="stylesheet" href="../styles/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <button id="open-options" class="icon-btn" title="Options" aria-label="Options">
+        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+          <path d="M3 6h11M17 6h4M3 12h4M10 12h11M3 18h11M17 18h4" stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none"/>
+          <circle cx="15" cy="6" r="2.2" fill="currentColor"/>
+          <circle cx="8" cy="12" r="2.2" fill="currentColor"/>
+          <circle cx="15" cy="18" r="2.2" fill="currentColor"/>
+        </svg>
+      </button>
+      <h1 class="brand">COPY</h1>
+      <div class="topbar-right">
+        <button id="show-info" class="icon-btn" title="About" aria-label="About">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2" fill="none"/>
+            <path d="M12 11v5M12 7.5v.01" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <div class="scopes" id="scopes">
+        <button class="scope-btn" data-scope="tab">This tab</button>
+        <button class="scope-btn" data-scope="selected">Selected tabs</button>
+        <button class="scope-btn" data-scope="window">This window's tabs</button>
+        <button class="scope-btn" data-scope="all">All tabs</button>
+        <button class="scope-btn" data-scope="all-by-window">All tabs by window</button>
+      </div>
+
+      <section class="copyas">
+        <div class="copyas-head">
+          <span class="copyas-label">Copy as:</span>
+          <button id="toggle-formats" class="copyas-current" aria-expanded="true">
+            <span id="current-format">Link</span>
+            <svg class="chevron" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+              <path d="M6 15l6-6 6 6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+        </div>
+        <div class="formats" id="formats"></div>
+      </section>
+    </main>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <div class="info-panel" id="info-panel" hidden>
+      <p><strong>TabCopy</strong> — copy tab links in any format.</p>
+      <p>Pick a scope, choose a format, and it's on your clipboard. Set a default format in Options.</p>
+      <button id="close-info" class="link-btn">Close</button>
+    </div>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>TabCopy — Options</title>
+    <link rel="stylesheet" href="../styles/app.css" />
+    <style>
+      body { width: 460px; padding: 28px 32px; }
+      h1 { font-size: 20px; margin: 0 0 4px; }
+      .sub { color: var(--muted); margin: 0 0 24px; font-size: 13px; }
+      .field { margin-bottom: 22px; }
+      label.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+      select { width: 100%; padding: 10px; border-radius: 8px; background: var(--panel);
+        color: var(--text); border: 1px solid var(--border); font-size: 14px; }
+      .saved { color: var(--accent); font-size: 13px; opacity: 0; transition: opacity .2s; }
+      .saved.show { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <h1>TabCopy Options</h1>
+    <p class="sub">Set your defaults. Changes save automatically.</p>
+
+    <div class="field">
+      <label class="field-label" for="default-format">Default copy format</label>
+      <select id="default-format"></select>
+    </div>
+
+    <span class="saved" id="saved">Saved ✓</span>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>PopIt — Options</title>
+    <link rel="stylesheet" href="../styles/app.css" />
+  </head>
+  <body>
+    <h1>PopIt Options</h1>
+    <p class="sub">How popup windows should open. Changes save automatically.</p>
+
+    <div class="grid">
+      <div class="field">
+        <label class="field-label" for="width">Width (px)</label>
+        <input id="width" type="number" min="200" step="10" />
+      </div>
+      <div class="field">
+        <label class="field-label" for="height">Height (px)</label>
+        <input id="height" type="number" min="200" step="10" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label class="field-label" for="position">Position</label>
+      <select id="position">
+        <option value="center">Center on current window</option>
+        <option value="top-right">Top-right corner</option>
+        <option value="top-left">Top-left corner</option>
+        <option value="remember">Remember last position</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label class="checkbox">
+        <input id="focus" type="checkbox" />
+        <span>Focus the popup when it opens</span>
+      </label>
+    </div>
+
+    <div class="tip">
+      Tip: you can also pop a tab with <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>
+      (change it at <code>chrome://extensions/shortcuts</code>).
+    </div>
+
+    <span class="saved" id="saved">Saved ✓</span>
+
+    <script type="module" src="options.js"></script>
+  </body>
+</html>

@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="stylesheet" href="popup.css" />
+  <link rel="stylesheet" href="../styles/app.css" />
   <title>FocusBlock</title>
 </head>
-<body>
+<body class="fb-popup">
   <header class="topbar">
     <div class="brand">
       <img src="../icons/icon32.png" alt="" class="brand-icon" />
@@ -27,7 +27,11 @@
     </button>
     <button class="tab" data-tab="focus">
       <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="0.6" fill="currentColor"/></svg>
-      Focus Mode
+      Focus
+    </button>
+    <button class="tab" data-tab="stats">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="7"/><rect x="12" y="6" width="3" height="11"/><rect x="17" y="13" width="3" height="4"/></svg>
+      Stats
     </button>
   </nav>
 
@@ -50,15 +54,16 @@
     </div>
 
     <div class="actions">
-      <button id="blockNow" class="btn btn-primary danger hidden">
+      <button id="blockNow" class="btn btn-danger hidden">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m4 5 16 14"/></svg>
         Block now
       </button>
-      <button id="changeSites" class="btn btn-soft">
+      <button id="changeSites" class="btn btn-ghost">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         Change blocked sites
       </button>
-      <button id="toggleBlock" class="btn btn-primary">Block current site</button>
+      <button id="secondaryAction" class="btn btn-soft hidden"></button>
+      <button id="toggleBlock" class="btn btn-primary">Block this site</button>
     </div>
   </section>
 
@@ -86,6 +91,37 @@
         <div class="focus-sub">Focus session in progress. Stay on track. 🎯</div>
       </div>
       <button id="stopFocus" class="btn btn-soft btn-block">End session early</button>
+    </div>
+  </section>
+
+  <!-- STATS TAB -->
+  <section id="tab-stats" class="panel hidden">
+    <div class="stats-summary">
+      <div class="stat-card">
+        <div class="stat-value" id="todayTotal">0m</div>
+        <div class="stat-label">Active today</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="weekTotal">0m</div>
+        <div class="stat-label">Last 7 days</div>
+      </div>
+    </div>
+
+    <div class="chart-block">
+      <div class="chart-head">
+        <span>Daily activity</span>
+        <span class="chart-hint">last 7 days</span>
+      </div>
+      <div id="weekChart" class="week-chart"></div>
+    </div>
+
+    <div class="list-block">
+      <div class="list-head">Today’s top sites</div>
+      <ul id="topSites" class="top-sites"></ul>
+      <p id="statsEmpty" class="stats-empty hidden">No activity tracked yet today.</p>
+      <p id="statsDisabled" class="stats-empty hidden">
+        Usage tracking is turned off. Enable it in Settings.
+      </p>
     </div>
   </section>
 

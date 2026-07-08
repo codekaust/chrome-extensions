@@ -64,6 +64,8 @@ document.querySelectorAll('.tab').forEach((btn) => {
     const tab = btn.dataset.tab;
     document.getElementById('tab-block').classList.toggle('hidden', tab !== 'block');
     document.getElementById('tab-focus').classList.toggle('hidden', tab !== 'focus');
+    document.getElementById('tab-stats').classList.toggle('hidden', tab !== 'stats');
+    if (tab === 'stats') loadStats();
   });
 });
 
@@ -101,18 +103,23 @@ function renderBlockTab() {
   favicon.style.backgroundImage =
     `url(https://www.google.com/s2/favicons?domain=${currentHost}&sz=64)`;
 
-  const isBlocked = state.blockedSites.includes(currentHost);
+  const secondaryBtn = document.getElementById('secondaryAction');
+  const mode = state.blockedSites.includes(currentHost) ? 'always'
+    : state.focusSites.includes(currentHost) ? 'focus' : null;
   const tempUntil = state.tempUnblocks?.[currentHost];
   const focusActive = state.focus.active && state.focus.endsAt > Date.now();
-  const onBreak = !focusActive && tempUntil && tempUntil > Date.now();
+  const onBreak = mode === 'always' && !focusActive && tempUntil && tempUntil > Date.now();
 
   toggleBtn.classList.remove('hidden');
+  secondaryBtn.classList.remove('hidden');
+  tempInfo.classList.add('hidden');
+  tempOptions.classList.add('hidden');
+  blockNowBtn.classList.add('hidden');
 
-  if (isBlocked) {
+  if (mode === 'always') {
     if (onBreak) {
       statusEl.textContent = 'On a temporary break';
       statusEl.className = 'site-status allowed';
-      // live mm:ss countdown until re-block
       const tick = () => {
         const left = tempUntil - Date.now();
         if (left <= 0) { clearInterval(breakTimer); breakTimer = null; refresh(); return; }
@@ -121,53 +128,70 @@ function renderBlockTab() {
       tick();
       breakTimer = setInterval(tick, 1000);
       tempInfo.classList.remove('hidden');
-      tempOptions.classList.add('hidden');
-      blockNowBtn.classList.remove('hidden');   // let the user re-block early
-      toggleBtn.textContent = 'Unblock permanently';
-      toggleBtn.className = 'btn btn-soft';
+      blockNowBtn.classList.remove('hidden');
     } else {
-      statusEl.textContent = 'Blocked';
+      statusEl.textContent = 'Blocked always';
       statusEl.className = 'site-status blocked';
-      tempInfo.classList.add('hidden');
       tempOptions.classList.toggle('hidden', focusActive);
-      blockNowBtn.classList.add('hidden');
-      toggleBtn.textContent = 'Unblock permanently';
-      toggleBtn.className = 'btn btn-primary danger';
     }
+    secondaryBtn.textContent = 'Switch to Focus-only';
+    secondaryBtn.dataset.action = 'blockFocus';
+    toggleBtn.textContent = 'Unblock permanently';
+    toggleBtn.className = 'btn btn-primary danger';
+    toggleBtn.dataset.action = 'unblock';
+  } else if (mode === 'focus') {
+    if (focusActive) {
+      statusEl.textContent = 'Blocked during Focus';
+      statusEl.className = 'site-status blocked';
+    } else {
+      statusEl.textContent = 'Allowed now · blocks in Focus';
+      statusEl.className = 'site-status';
+    }
+    secondaryBtn.textContent = 'Block always instead';
+    secondaryBtn.dataset.action = 'blockAlways';
+    toggleBtn.textContent = 'Unblock';
+    toggleBtn.className = 'btn btn-primary danger';
+    toggleBtn.dataset.action = 'unblock';
   } else {
     statusEl.textContent = 'Not blocked';
     statusEl.className = 'site-status allowed';
-    tempInfo.classList.add('hidden');
-    tempOptions.classList.add('hidden');
-    blockNowBtn.classList.add('hidden');
+    secondaryBtn.textContent = 'Block during Focus only';
+    secondaryBtn.dataset.action = 'blockFocus';
     toggleBtn.textContent = 'Block this site';
     toggleBtn.className = 'btn btn-primary';
+    toggleBtn.dataset.action = 'blockAlways';
   }
 }
+
+// Perform a block-tab action, then refresh + reload the tab so it takes effect.
+async function performAction(action) {
+  if (!currentHost) return;
+  if (action === 'blockAlways') {
+    await send({ type: 'blockSite', domain: currentHost, mode: 'always' });
+  } else if (action === 'blockFocus') {
+    await send({ type: 'blockSite', domain: currentHost, mode: 'focus' });
+  } else if (action === 'unblock') {
+    const res = await gatedSend(
+      { type: 'unblockSite', domain: currentHost },
+      `Enter your password to unblock ${currentHost}.`
+    );
+    if (!res?.ok) return; // cancelled or failed
+  }
+  await refresh();
+  const tab = await getActiveTab();
+  if (tab?.id) chrome.tabs.reload(tab.id);
+}
+
+document.getElementById('toggleBlock').addEventListener('click', () =>
+  performAction(document.getElementById('toggleBlock').dataset.action));
+document.getElementById('secondaryAction').addEventListener('click', () =>
+  performAction(document.getElementById('secondaryAction').dataset.action));
 
 document.getElementById('blockNow').addEventListener('click', async () => {
   if (!currentHost) return;
   await send({ type: 'reblockNow', domain: currentHost });
   await refresh();
   navigateActiveTab(`https://${currentHost}`); // redirect back → shows the block page
-});
-
-document.getElementById('toggleBlock').addEventListener('click', async () => {
-  if (!currentHost) return;
-  const isBlocked = state.blockedSites.includes(currentHost);
-  if (isBlocked) {
-    const res = await gatedSend(
-      { type: 'unblockSite', domain: currentHost },
-      `Enter your password to unblock ${currentHost}.`
-    );
-    if (!res?.ok && !res?.needsPassword) return;
-  } else {
-    await send({ type: 'blockSite', domain: currentHost });
-  }
-  await refresh();
-  // reload the tab so the change takes effect immediately
-  const tab = await getActiveTab();
-  if (tab?.id) chrome.tabs.reload(tab.id);
 });
 
 document.querySelectorAll('.chip').forEach((chip) => {
@@ -223,6 +247,89 @@ function renderFocusTab() {
     };
     tick();
     countdownTimer = setInterval(tick, 1000);
+  }
+}
+
+// ---------- stats tab ----------
+function fmtDuration(seconds) {
+  const s = Math.round(seconds);
+  if (s < 60) return s <= 0 ? '0m' : '<1m';
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (h > 0) return m ? `${h}h ${m}m` : `${h}h`;
+  return `${m}m`;
+}
+
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function dayLabel(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return DAY_LABELS[new Date(y, m - 1, d).getDay()];
+}
+
+async function loadStats() {
+  const trackingOn = state?.settings?.trackUsage !== false;
+  document.getElementById('statsDisabled').classList.toggle('hidden', trackingOn);
+
+  const res = await send({ type: 'getStats' });
+  if (!res?.ok) return;
+  const { today, todayTotal, weekTotal, days } = res.stats;
+
+  document.getElementById('todayTotal').textContent = fmtDuration(todayTotal);
+  document.getElementById('weekTotal').textContent = fmtDuration(weekTotal);
+
+  // 7-day bar chart
+  const chart = document.getElementById('weekChart');
+  chart.innerHTML = '';
+  const max = Math.max(1, ...days.map((d) => d.total));
+  days.forEach((d, i) => {
+    const col = document.createElement('div');
+    col.className = 'bar-col';
+    const barWrap = document.createElement('div');
+    barWrap.className = 'bar-wrap';
+    const bar = document.createElement('div');
+    bar.className = 'bar';
+    bar.style.height = `${Math.max(3, (d.total / max) * 100)}%`;
+    if (i === days.length - 1) bar.classList.add('bar-today');
+    bar.title = fmtDuration(d.total);
+    barWrap.appendChild(bar);
+    const lbl = document.createElement('div');
+    lbl.className = 'bar-label';
+    lbl.textContent = dayLabel(d.key);
+    col.append(barWrap, lbl);
+    chart.appendChild(col);
+  });
+
+  // today's top sites
+  const list = document.getElementById('topSites');
+  list.innerHTML = '';
+  const top = today.slice(0, 8);
+  document.getElementById('statsEmpty').classList.toggle('hidden', top.length > 0 || !trackingOn);
+  const maxSite = Math.max(1, ...top.map((s) => s.seconds));
+  for (const s of top) {
+    const li = document.createElement('li');
+    const icon = document.createElement('img');
+    icon.className = 'site-ico';
+    icon.src = `https://www.google.com/s2/favicons?domain=${s.domain}&sz=64`;
+    const body = document.createElement('div');
+    body.className = 'site-body';
+    const row = document.createElement('div');
+    row.className = 'site-row';
+    const name = document.createElement('span');
+    name.className = 'site-name';
+    name.textContent = s.domain;
+    const time = document.createElement('span');
+    time.className = 'site-time';
+    time.textContent = fmtDuration(s.seconds);
+    row.append(name, time);
+    const track = document.createElement('div');
+    track.className = 'site-track';
+    const fill = document.createElement('div');
+    fill.className = 'site-fill';
+    fill.style.width = `${(s.seconds / maxSite) * 100}%`;
+    track.appendChild(fill);
+    body.append(row, track);
+    li.append(icon, body);
+    list.appendChild(li);
   }
 }
 

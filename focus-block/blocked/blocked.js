@@ -21,7 +21,12 @@ async function boot() {
   const res = await chrome.runtime.sendMessage({ type: 'getState' });
   const state = res.state;
   const focusActive = state.focus.active && state.focus.endsAt > Date.now();
-  document.getElementById('breakArea').classList.toggle('hidden', focusActive);
+  const isFocusOnly = (state.focusSites || []).includes(site);
+  // Focus-only sites are blocked *because* a session is running → no breaks.
+  // Always-blocked sites allow timed breaks, unless a focus session is on.
+  const subEl = document.querySelector('.sub');
+  if (isFocusOnly) subEl.textContent = 'This site is blocked during your focus session.';
+  document.getElementById('breakArea').classList.toggle('hidden', focusActive || isFocusOnly);
   document.getElementById('focusNote').classList.toggle('hidden', !focusActive);
   if (state.settings?.cleanBlockPage) {
     document.getElementById('quote').classList.add('hidden');

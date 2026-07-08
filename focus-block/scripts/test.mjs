@@ -9,6 +9,11 @@ let dynamicRules = [];
 let badgeText = '';
 const notifications = [];
 
+// controllable "browser state" for usage-tracking tests
+let mockWin = { id: 1, focused: true };
+let mockTabs = { 1: [{ active: true, url: 'https://example.com/x' }] };
+let mockIdle = 'active';
+
 globalThis.chrome = {
   storage: {
     local: {
@@ -37,6 +42,20 @@ globalThis.chrome = {
     onAlarm: { addListener(fn) { alarmHandler = fn; } },
   },
   notifications: { create(_id, opts) { notifications.push(opts ?? _id); } },
+  tabs: {
+    async query({ windowId }) { return mockTabs[windowId] || []; },
+    onActivated: { addListener() {} },
+    onUpdated: { addListener() {} },
+  },
+  windows: {
+    async getLastFocused() { return mockWin; },
+    onFocusChanged: { addListener() {} },
+  },
+  idle: {
+    setDetectionInterval() {},
+    async queryState() { return mockIdle; },
+    onStateChanged: { addListener() {} },
+  },
   runtime: {
     getURL: (p) => p,
     onMessage: { addListener(fn) { msgHandler = fn; } },
@@ -107,6 +126,62 @@ const denied = await dispatch({ type: 'tempUnblock', domain: 'youtube.com', minu
 assert(denied.ok === false, 'cannot start a break during focus mode');
 await dispatch({ type: 'stopFocus' });
 assert(store.focus.active === false, 'focus session can be stopped');
+
+// --- usage tracking ---
+console.log('usage tracking');
+mockWin = { id: 1, focused: true };
+mockTabs = { 1: [{ active: true, url: 'https://example.com/watch' }] };
+mockIdle = 'active';
+await dispatch({ type: 'getStats' });                 // starts a session
+assert(store.session?.domain === 'example.com', 'active session tracks focused tab domain');
+// simulate ~6s of viewing, then flush via another getStats
+store.session.since = Date.now() - 6000;
+let s = (await dispatch({ type: 'getStats' })).stats;
+const exToday = s.today.find((x) => x.domain === 'example.com');
+assert(exToday && exToday.seconds >= 5, 'active time is credited to the domain');
+assert(s.days.length === 7, 'stats return a 7-day series');
+assert(s.todayTotal >= 5, 'today total reflects tracked time');
+
+// idle → no tracking
+mockIdle = 'idle';
+await dispatch({ type: 'getStats' });
+assert(store.session === null, 'no session while the user is idle');
+
+// unfocused window → no tracking
+mockIdle = 'active';
+mockWin = { id: 1, focused: false };
+await dispatch({ type: 'getStats' });
+assert(store.session === null, 'no session while the browser is unfocused');
+
+// tracking disabled via setting
+mockWin = { id: 1, focused: true };
+await dispatch({ type: 'setSetting', key: 'trackUsage', value: false });
+await dispatch({ type: 'getStats' });
+assert(store.session === null, 'no session when tracking is disabled');
+await dispatch({ type: 'setSetting', key: 'trackUsage', value: true });
+
+// clear history
+await dispatch({ type: 'clearStats' });
+s = (await dispatch({ type: 'getStats' })).stats;
+assert(s.todayTotal === 0 || s.today.length === 0, 'clearStats wipes usage history');
+
+// --- two block modes ---
+console.log('block modes (always vs during-focus)');
+await dispatch({ type: 'blockSite', domain: 'twitter.com', mode: 'focus' });
+assert(store.focusSites.includes('twitter.com'), 'focus-only site stored in focusSites');
+assert(!store.blockedSites.includes('twitter.com'), 'focus-only site not in the always list');
+assert(!blockedDomains().includes('twitter.com'), 'focus-only site is NOT blocked outside focus');
+await dispatch({ type: 'startFocus', minutes: 25 });
+assert(blockedDomains().includes('twitter.com'), 'focus-only site IS blocked during focus');
+await dispatch({ type: 'stopFocus' });
+assert(!blockedDomains().includes('twitter.com'), 'focus-only site frees up when focus ends');
+await dispatch({ type: 'blockSite', domain: 'twitter.com', mode: 'always' });
+assert(store.blockedSites.includes('twitter.com') && !store.focusSites.includes('twitter.com'),
+  'switching mode moves the site between lists (no duplicate)');
+assert(blockedDomains().includes('twitter.com'), 'after switching, site is blocked always');
+await dispatch({ type: 'unblockSite', domain: 'twitter.com' });
+assert(!store.blockedSites.includes('twitter.com') && !store.focusSites.includes('twitter.com'),
+  'unblock removes the site from both lists');
 
 // --- password gating ---
 console.log('password protection');
