@@ -194,6 +194,19 @@ assert(wrong.ok === false, 'wrong password rejected');
 const right = await dispatch({ type: 'unblockSite', domain: 'youtube.com', password: 'hunter2' });
 assert(right.ok === true, 'correct password unblocks');
 assert(store.blockedSites.length === 0, 'site removed after password unblock');
+// switching always→focus is a form of unblocking, so it's password-gated too
+await dispatch({ type: 'blockSite', domain: 'imgur.com', mode: 'always' });
+const swNoPwd = await dispatch({ type: 'blockSite', domain: 'imgur.com', mode: 'focus' });
+assert(swNoPwd.ok === false && swNoPwd.needsPassword, 'always→focus blocked without password');
+assert(store.blockedSites.includes('imgur.com'), 'site stays always-blocked when switch is denied');
+const swPwd = await dispatch({ type: 'blockSite', domain: 'imgur.com', mode: 'focus', password: 'hunter2' });
+assert(swPwd.ok === true, 'always→focus allowed with correct password');
+assert(store.focusSites.includes('imgur.com') && !store.blockedSites.includes('imgur.com'),
+  'site moved to focus list after gated switch');
+// adding a brand-new focus-only site needs no password (not a loosening)
+const addFocus = await dispatch({ type: 'blockSite', domain: 'tiktok.com', mode: 'focus' });
+assert(addFocus.ok === true, 'adding a new focus-only site needs no password');
+
 const changeNoOld = await dispatch({ type: 'setPassword', password: 'new' });
 assert(changeNoOld.ok === false, 'changing password requires the old one');
 await dispatch({ type: 'setPassword', password: '', oldPassword: 'hunter2' });

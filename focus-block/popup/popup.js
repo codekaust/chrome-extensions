@@ -169,7 +169,13 @@ async function performAction(action) {
   if (action === 'blockAlways') {
     await send({ type: 'blockSite', domain: currentHost, mode: 'always' });
   } else if (action === 'blockFocus') {
-    await send({ type: 'blockSite', domain: currentHost, mode: 'focus' });
+    // Loosening an always-blocked site to focus-only is password-gated in the
+    // background; gatedSend prompts only when that gate actually triggers.
+    const res = await gatedSend(
+      { type: 'blockSite', domain: currentHost, mode: 'focus' },
+      `Enter your password to switch ${currentHost} to focus-only.`
+    );
+    if (!res?.ok) return; // cancelled or failed
   } else if (action === 'unblock') {
     const res = await gatedSend(
       { type: 'unblockSite', domain: currentHost },

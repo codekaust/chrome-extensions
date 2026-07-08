@@ -119,7 +119,12 @@ async function removeSite(dom) {
 }
 
 async function switchMode(dom, mode) {
-  await send({ type: 'blockSite', domain: dom, mode });
+  // Switching an always-blocked site to focus-only loosens it, so the
+  // background password-gates it; gatedSend prompts only when needed.
+  await gatedSend(
+    { type: 'blockSite', domain: dom, mode },
+    `Enter your password to switch ${dom} to focus-only.`
+  );
   await refresh();
 }
 

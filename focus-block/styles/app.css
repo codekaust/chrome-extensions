@@ -175,7 +175,10 @@ body.fb-popup { width: 380px; background: var(--surface); }
 
 .panel {
   padding: var(--s5) var(--s4) var(--s5);
-  min-height: 520px;                 /* consistent rectangular shape */
+  /* Chrome caps popups at ~600px tall; with the header + tab bar (~90px)
+     this keeps the whole popup on-screen without a scrollbar while still
+     giving every tab the same roomy rectangular shape. */
+  min-height: 470px;
   display: flex; flex-direction: column;
 }
 /* Block & Focus pin their primary action to the bottom of the panel */
@@ -352,6 +355,10 @@ body.fb-blocked {
 .break-label { font-size: 13px; color: var(--text-2); margin-bottom: var(--s3); }
 .break-buttons { display: flex; gap: var(--s3); justify-content: center; }
 .break-error { color: var(--danger); font-size: 13px; margin-top: var(--s3); }
+.manage-area { margin-top: var(--s5); border-top: 1px solid var(--border); padding-top: var(--s5); }
+.manage-label { font-size: 13px; color: var(--text-2); margin-bottom: var(--s3); }
+.manage-area .pwd-row { margin-bottom: var(--s3); }
+.manage-buttons { display: flex; flex-direction: column; gap: var(--s2); }
 .focus-note {
   margin-top: var(--s6); background: var(--brand-50); color: var(--brand);
   border: 1px solid var(--brand-100); padding: var(--s3) var(--s4);

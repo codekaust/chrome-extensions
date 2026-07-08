@@ -251,6 +251,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const dom = normalizeDomain(msg.domain);
         if (!dom) return sendResponse({ ok: false, error: 'Invalid site' });
         const mode = msg.mode === 'focus' ? 'focus' : 'always';
+        // Moving an always-blocked site to focus-only makes it reachable outside
+        // focus sessions — a form of unblocking — so it's password-gated, exactly
+        // like unblockSite. Adding a new site or tightening focus→always is free.
+        if (mode === 'focus' && state.blockedSites.includes(dom)) {
+          const gate = await requirePassword(state, msg.password);
+          if (!gate.ok) return sendResponse(gate);
+        }
         // a site lives in exactly one list — moving modes removes it from the other
         const blocked = state.blockedSites.filter((d) => d !== dom);
         const focusList = state.focusSites.filter((d) => d !== dom);
