@@ -40,3 +40,5 @@ desktop.ini
 *.swo
 *~
 .claude/
+
+tmp/

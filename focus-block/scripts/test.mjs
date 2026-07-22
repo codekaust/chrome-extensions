@@ -206,6 +206,11 @@ assert(updatedTabs.find((u) => u.id === 11)?.url.includes('site=x.com'),
   'redirect points at the block page for that site');
 assert(!redirectedIds.includes(12), 'tab on an allowed site is left alone');
 assert(redirectedIds.includes(13), 'subdomain of a blocked site is also redirected');
+// A later recompute that does NOT change the blocked set must not touch tabs
+// again — this is the whole "stop reloading for no reason" fix.
+updatedTabs = [];
+await dispatch({ type: 'setSetting', key: 'notifyCycle', value: false });
+assert(updatedTabs.length === 0, 'a recompute with no block-set change reloads nothing');
 await dispatch({ type: 'stopFocus' });
 mockAllTabs = [];
 

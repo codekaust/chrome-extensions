@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>New Tab</title>
+  <script>
+    // Applied synchronously, before first paint, to avoid a flash of the
+    // wrong theme/font/size. newtab.js reconciles this against
+    // chrome.storage.local (the source of truth) once it loads.
+    (function () {
+      var themePref = localStorage.getItem("themePreference") || "system";
+      var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      var theme = themePref === "system" ? (prefersDark ? "dark" : "light") : themePref;
+      if (theme !== "light") document.documentElement.dataset.theme = theme;
+
+      var font = localStorage.getItem("fontPreference") || "serif";
+      if (font !== "serif") document.documentElement.dataset.font = font;
+
+      var size = localStorage.getItem("fontSizePreference") || "medium";
+      if (size !== "medium") document.documentElement.dataset.size = size;
+    })();
+  </script>
+  <link rel="stylesheet" href="../styles/app.css">
+</head>
+<body>
+  <div id="editor" class="editor" contenteditable="true" spellcheck="false"></div>
+
+  <div class="toolbar toolbar-left">
+    <div class="menu">
+      <button id="customize-toggle" class="pill-button" type="button" aria-haspopup="true" aria-expanded="false">
+        Customize
+      </button>
+      <div id="customize-panel" class="customize-panel" role="menu" hidden>
+        <div class="customize-section">
+          <p class="customize-label">Theme</p>
+          <div id="theme-row" class="customize-row"></div>
+        </div>
+        <div class="customize-section">
+          <p class="customize-label">Font</p>
+          <div id="font-row" class="customize-row"></div>
+        </div>
+        <div class="customize-section">
+          <p class="customize-label">Size</p>
+          <div id="size-row" class="customize-row"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar toolbar-right">
+    <span id="saved" class="saved">Saved</span>
+    <span id="count" class="count"></span>
+  </div>
+
+  <script src="newtab.js" type="module"></script>
+</body>
+</html>

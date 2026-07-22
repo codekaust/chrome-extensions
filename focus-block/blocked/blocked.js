@@ -63,26 +63,38 @@ function stillBlocked(state) {
   return false;
 }
 
+// Navigate back to the site exactly once — guarded so overlapping triggers
+// (a storage change *and* the focus-end timer, say) can't cause a double load.
+let leaving = false;
+function goToSite() {
+  if (leaving || !site) return;
+  leaving = true;
+  location.href = `https://${site}`;
+}
+
 // When the site stops being blocked (focus ends, unblocked elsewhere, or a
 // break starts), send the user back to where they were trying to go.
 async function maybeRedirect() {
-  if (!site) return;
+  if (leaving || !site) return;
   const res = await chrome.runtime.sendMessage({ type: 'getState' });
-  if (res?.state && !stillBlocked(res.state)) {
-    location.href = `https://${site}`;
-  }
+  if (res?.state && !stillBlocked(res.state)) goToSite();
 }
 
-// React to focus ending / list changes live, without needing a manual refresh.
-chrome.storage.onChanged.addListener(() => { maybeRedirect(); });
+// React only to changes that can affect *this* site's block state — never to
+// unrelated writes like usage/session, which happen every minute. This keeps
+// the page still; it only leaves when blocking actually lifts.
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.focus || changes.blockedSites || changes.focusSites || changes.tempUnblocks) {
+    maybeRedirect();
+  }
+});
 
 document.querySelectorAll('.chip').forEach((chip) => {
   chip.addEventListener('click', async () => {
     const minutes = Number(chip.dataset.min);
     const res = await chrome.runtime.sendMessage({ type: 'tempUnblock', domain: site, minutes });
     if (res?.ok) {
-      // brief delay so the rule update lands before we navigate
-      setTimeout(() => { location.href = `https://${site}`; }, 250);
+      goToSite();
     } else {
       const err = document.getElementById('breakError');
       err.textContent = res?.error || 'Could not start a break.';
@@ -103,7 +115,7 @@ document.getElementById('unblockBtn').addEventListener('click', async () => {
   const password = hasPassword ? document.getElementById('pwd').value : undefined;
   const res = await chrome.runtime.sendMessage({ type: 'unblockSite', domain: site, password });
   if (res?.ok) {
-    setTimeout(() => { location.href = `https://${site}`; }, 250);
+    goToSite();
   } else {
     showManageError(res?.error || 'Could not unblock this site.');
   }
@@ -115,7 +127,7 @@ document.getElementById('focusOnlyBtn').addEventListener('click', async () => {
   const password = hasPassword ? document.getElementById('pwd').value : undefined;
   const res = await chrome.runtime.sendMessage({ type: 'blockSite', domain: site, mode: 'focus', password });
   if (res?.ok) {
-    setTimeout(() => { location.href = `https://${site}`; }, 250);
+    goToSite();
   } else {
     showManageError(res?.error || 'Could not update this site.');
   }

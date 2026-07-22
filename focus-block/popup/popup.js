@@ -14,12 +14,6 @@ function fmt(ms) {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
-// send the active tab to a URL (used to auto-open a site after a break)
-async function navigateActiveTab(url) {
-  const tab = await getActiveTab();
-  if (tab?.id) chrome.tabs.update(tab.id, { url });
-}
-
 // ---------- helpers ----------
 function normalize(input) {
   if (!input) return null;
@@ -163,7 +157,10 @@ function renderBlockTab() {
   }
 }
 
-// Perform a block-tab action, then refresh + reload the tab so it takes effect.
+// Perform a block-tab action, then refresh the popup UI. The tab itself is not
+// touched here: the background redirects the open tab when a site *becomes*
+// blocked, and the block page sends itself back to the site when it *becomes*
+// unblocked — so exactly one navigation happens, only on a real state change.
 async function performAction(action) {
   if (!currentHost) return;
   if (action === 'blockAlways') {
@@ -184,8 +181,6 @@ async function performAction(action) {
     if (!res?.ok) return; // cancelled or failed
   }
   await refresh();
-  const tab = await getActiveTab();
-  if (tab?.id) chrome.tabs.reload(tab.id);
 }
 
 document.getElementById('toggleBlock').addEventListener('click', () =>
@@ -197,7 +192,8 @@ document.getElementById('blockNow').addEventListener('click', async () => {
   if (!currentHost) return;
   await send({ type: 'reblockNow', domain: currentHost });
   await refresh();
-  navigateActiveTab(`https://${currentHost}`); // redirect back → shows the block page
+  // The background re-blocks the site and redirects the open tab to the block
+  // page — no navigation needed from here.
 });
 
 document.querySelectorAll('.chip').forEach((chip) => {
@@ -205,8 +201,8 @@ document.querySelectorAll('.chip').forEach((chip) => {
     const minutes = Number(chip.dataset.min);
     const res = await send({ type: 'tempUnblock', domain: currentHost, minutes });
     if (res?.ok) {
-      // auto-redirect straight to the site now that it's unblocked
-      navigateActiveTab(`https://${currentHost}`);
+      // If the tab is on the block page it redirects itself now that the site
+      // is allowed; nothing to navigate from here. Just close the popup.
       window.close();
     } else if (res?.error) {
       alert(res.error);

@@ -16,6 +16,7 @@ const DEFAULTS = {
   password: null,            // { hash } sha-256 hex, or null
   usage: {},                 // { "YYYY-MM-DD": { domain: seconds } }
   session: null,             // { domain, since } — the in-progress active session
+  effectiveBlocked: [],      // domains blocked as of the last recompute (for diffing)
 };
 
 const IDLE_THRESHOLD = 30;   // seconds of no input before we stop counting
@@ -214,11 +215,17 @@ async function recomputeRules() {
     addRules: rules,
   });
 
-  // DNR redirects only fire on *new* network navigations, and sites with their
-  // own service worker (x.com, mail.google.com, …) can serve a navigation from
-  // cache so DNR never sees it. So we also actively redirect any already-open
-  // tab that's sitting on a now-blocked domain — reliable regardless of DNR.
-  await enforceOpenTabs(effective);
+  // Only act on a *transition*. When a domain newly becomes blocked (focus
+  // starts, a site is added, a break ends) we redirect any tab already sitting
+  // on it — once. Domains that were already blocked need nothing (their tabs are
+  // already on the block page), and domains that just became *unblocked* are
+  // handled by the block page redirecting itself. This is the whole point: no
+  // reloading unless a tab's block state actually changed.
+  const prev = state.effectiveBlocked || [];
+  const added = effective.filter((d) => !prev.includes(d));
+  const setChanged = added.length > 0 || prev.some((d) => !effective.includes(d));
+  if (added.length) await enforceOpenTabs(added);
+  if (setChanged) await setState({ effectiveBlocked: effective });
 
   await updateBadge(state.settings, focusActive, effective.length);
   await scheduleNextAlarm(temp, focus);

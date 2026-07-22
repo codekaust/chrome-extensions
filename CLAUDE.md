@@ -7,7 +7,7 @@ You help me create extensions for various usecases and your work is characterize
 ## What this is
 
 A monorepo of independent Manifest V3 Chrome extensions. Each lives in its own
-top-level directory (`focus-block/`, `tab-copy/`, `pop-it/`) and is entirely
+top-level directory (`focus-block/`, `tab-copy/`, `pop-it/`, `paper-tab/`) and is entirely
 self-contained — its own `manifest.json`, README, styles, icons, and scripts.
 There is **no build step and no package.json**: extensions load directly as
 unpacked directories, and everything runs on the Node/browser stdlib only (no
@@ -47,10 +47,16 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
 
 - **focus-block** — Site blocking via `declarativeNetRequest` dynamic rules
   **plus** an active `chrome.tabs.update` redirect layer (`guardTab` on
-  `tabs.onUpdated` for new navigations, `enforceOpenTabs` on every rule
-  recompute for already-open tabs). The redirect layer is essential: PWAs with
-  their own service worker (x.com, mail.google.com) serve navigations from cache
-  so DNR never sees them. Both layers match subdomains (`matchBlocked`).
+  `tabs.onUpdated` for new navigations; `enforceOpenTabs` for already-open tabs,
+  fired **only for domains newly added** to the blocked set — diffed against the
+  persisted `effectiveBlocked`, never on every recompute). The redirect layer is
+  essential: PWAs with their own service worker (x.com, mail.google.com) serve
+  navigations from cache so DNR never sees them. Both layers match subdomains
+  (`matchBlocked`). Enforcement is strictly transition-driven — a tab is only
+  navigated when its block state actually changes: site → block page when it
+  becomes blocked, and the block page redirects *itself* back to the site
+  (storage `onChanged` on focus/list/temp keys) when it becomes unblocked. No
+  surface reloads a tab speculatively.
   Focus/break timers via `alarms`, and per-domain active-time usage tracking
   (gated on window focus + http(s) tab + non-idle input). Has a redirect
   `blocked/` page. State shape and constants are documented at the top of
@@ -62,6 +68,45 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
   the pure `computeGeometry` in `src/popper.js`; the worker (`src/background.js`)
   wires up the toolbar click, the `Alt+Shift+P` command, and remembered-position
   persistence.
+- **paper-tab** — No service worker. Overrides `chrome_url_overrides.newtab`
+  with a full-bleed, single-note distraction-free editor (`newtab/newtab.js`)
+  — no card/frame, the whole tab is the page. Markdown renders live as you
+  type (Notion/Typora-style block editor over a `contenteditable` root), not
+  via a separate preview step. `src/live-markdown.js` holds pure
+  regex-matchers (`matchBlockTrigger`/`matchEnterTrigger`/`matchInlineTrigger`/
+  `matchTaskBracket`, tested by `scripts/test.mjs`) that detect when a marker
+  just completed (e.g. `"# "`, a closing `**`); `newtab.js` applies the
+  conversion via `document.execCommand` (`formatBlock`/`insertUnorderedList`/
+  `insertHTML`/etc), **never** manual `replaceWith` + `Selection` surgery on
+  the focused node — doing so desyncs Chrome's native typing pipeline so the
+  *next* keystroke lands outside the new element (see the comment above
+  `deleteBlockPrefix` for the full story, including the `execCommand`
+  reentrant-`input`-event gotcha and the `ZERO_WIDTH_SPACE` caret-anchor
+  trick). The note is serialized back to Markdown (`serializeMarkdown`) for
+  storage on every autosave, and hydrated back via the read-only
+  `renderMarkdown` in `src/markdown.js` (pure, dependency-free, HTML-escapes
+  all text before adding any tag, whitelists link schemes) on load — so
+  `chrome.storage.local` always holds portable Markdown text, never live DOM.
+  A single **Customize** popover (not separate menus) holds three
+  independently-selectable chip rows — theme, font, size — each backed by its
+  own pure config + resolver (`src/themes.js`, `src/fonts.js`,
+  `src/font-sizes.js`); all three are mirrored into `localStorage` (read
+  synchronously by an inline `<head>` script) so the correct theme/font/size
+  paints before first render, with `chrome.storage.local` as the cross-session
+  source of truth reconciled once `newtab.js` loads.
+  Tables: `/table` + Enter (`matchSlashCommand` in `src/live-markdown.js`)
+  inserts a 2×2 table; `src/markdown.js` parses/renders GFM pipe-table syntax
+  for hydration, `newtab.js` serializes `<table>` back to pipe syntax. Each
+  table gets a non-editable `.table-controls` bar (Add Row/Column buttons +
+  Ctrl+N/Ctrl+Shift+N shortcuts) attached after it — on insert *and* after
+  hydration — which `serializeMarkdown` explicitly skips so it never leaks
+  into saved text. Enter inside any cell always exits to the paragraph after
+  the table (creating one if missing) rather than leaving the cursor stuck;
+  Tab/Shift+Tab move between cells, adding a row when tabbing past the last
+  cell. `normalizeEmptyEditor` treats tables/hr/pre/headings/lists/blockquotes
+  as structural regardless of their (possibly empty) text content — it used
+  to wipe a freshly-inserted empty-celled table via the same execCommand
+  reentrant-`input` gotcha described above.
 
 ## Following the design system
 
@@ -84,3 +129,6 @@ Update this CLAUDE.md whenever it drifts from reality — a new extension is add
 commands or the architecture change, or the user gives an instruction/convention
 that future sessions should follow. Keep it short and to the point; prefer
 editing an existing section over adding new ones.
+
+# Other Notes
+1. tmp/ folder is gitignored. If you wanna keep some random files like screenshots, keep them there.
