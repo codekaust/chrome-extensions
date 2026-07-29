@@ -87,6 +87,19 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
   `renderMarkdown` in `src/markdown.js` (pure, dependency-free, HTML-escapes
   all text before adding any tag, whitelists link schemes) on load — so
   `chrome.storage.local` always holds portable Markdown text, never live DOM.
+  `serializeMarkdown` walks `childNodes`, **not** `children`: Chrome puts typed
+  text directly in the editor root whenever the caret has no valid position in
+  the current block, and an element-only walk dropped it on every save. The
+  cause of that missing caret position is a childless block (`<h1></h1>` from a
+  note holding just `"# "`), so `hydrate` runs `fillEmptyBlocks` to give every
+  empty block a `<br>` placeholder — without it, a note that once contained an
+  empty heading became permanently unwritable (every keystroke landed at the
+  root, every save rewrote the same `"# "`). Never construct an empty block
+  without a `<br>`; use `emptyParagraph()`.
+  The whole persistence path is instrumented via `src/log.js` (per-tab id,
+  ring buffer, `window.__paperTab.copy()/state()/peek()`, never logs note text
+  verbatim) — see the README's *Debugging note loss*. Keep new
+  save/load/sync branches logged; that's how cross-tab loss gets diagnosed.
   A single **Customize** popover (not separate menus) holds three
   independently-selectable chip rows — theme, font, size — each backed by its
   own pure config + resolver (`src/themes.js`, `src/fonts.js`,
@@ -131,4 +144,4 @@ that future sessions should follow. Keep it short and to the point; prefer
 editing an existing section over adding new ones.
 
 # Other Notes
-1. tmp/ folder is gitignored. If you wanna keep some random files like screenshots, keep them there.
+1. .temp/ folder is gitignored. If you wanna keep some random files like screenshots, keep them there.

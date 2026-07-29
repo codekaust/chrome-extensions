@@ -71,3 +71,20 @@ node scripts/gen-icons.mjs
 ```
 node scripts/test.mjs
 ```
+
+## Debugging note loss
+
+Every step of the persistence path logs to the tab's console (`page:load`,
+`init:read-done`, `hydrate:*`, `save:scheduled` → `save:write` → `save:ok`,
+`storage:changed`, `sync:apply`/`sync:skip`), prefixed with a per-tab id so logs
+from several tabs can be interleaved. Note text is never logged verbatim — only
+its length, an FNV-1a fingerprint, and a short head/tail preview.
+
+Right-click a PaperTab tab → **Inspect** → Console, then:
+
+- `__paperTab.copy()` — full transcript for this tab to the clipboard
+- `__paperTab.state()` — this tab's live persistence state
+- `__paperTab.peek()` — what `chrome.storage.local` holds right now
+
+The ring buffer records even with console output silenced
+(`localStorage.setItem("paperTabLog", "off")`).

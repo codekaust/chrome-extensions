@@ -41,4 +41,5 @@ desktop.ini
 *~
 .claude/
 
-tmp/
+tmp
+.temp
