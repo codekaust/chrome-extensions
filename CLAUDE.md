@@ -7,7 +7,7 @@ You help me create extensions for various usecases and your work is characterize
 ## What this is
 
 A monorepo of independent Manifest V3 Chrome extensions. Each lives in its own
-top-level directory (`focus-block/`, `tab-copy/`, `pop-it/`, `paper-tab/`) and is entirely
+top-level directory (`focus-block/`, `tab-copy/`, `pop-it/`, `paper-tab/`, `tab-loop/`) and is entirely
 self-contained — its own `manifest.json`, README, styles, icons, and scripts.
 There is **no build step and no package.json**: extensions load directly as
 unpacked directories, and everything runs on the Node/browser stdlib only (no
@@ -120,6 +120,19 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
   as structural regardless of their (possibly empty) text content — it used
   to wipe a freshly-inserted empty-celled table via the same execCommand
   reentrant-`input` gotcha described above.
+- **tab-loop** — Auto-refreshes a tab on a timer (preset or custom interval),
+  a safer replacement for store extensions like "Easy Auto Refresh." Requests
+  only `alarms` + `storage` — no `tabs`/host permissions, no content scripts,
+  no network calls; every `chrome.tabs` call touches only id-shaped fields
+  Chrome always populates. One `chrome.alarms` alarm per looping tab, named
+  `tabloop:<tabId>` (`alarmName`/`parseAlarmName` in `src/schedule.js`, the
+  only pure/testable module — also `formatInterval`, `formatCountdown`,
+  `clampSeconds` with a 3s floor so a typo can't hammer a page). State lives
+  in `chrome.storage.local["tabs"]`; `tabs.onRemoved` and a full-clear on
+  `runtime.onStartup` keep a closed tab or a stale post-restart tab id from
+  silently resuming reloads. The popup fetches status once on open, then
+  computes the countdown locally from the stored `nextAt` timestamp rather
+  than polling the worker every second.
 
 ## Following the design system
 

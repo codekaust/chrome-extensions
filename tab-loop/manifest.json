@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "TabLoop",
+  "version": "1.0.0",
+  "description": "Auto-refresh any tab on a timer. Pick a preset or custom interval, hit start, and TabLoop reloads that tab in the background — even in other windows.",
+  "permissions": ["alarms", "storage"],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "TabLoop — auto-refresh this tab",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}

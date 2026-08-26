@@ -1,0 +1,149 @@
+:root {
+  --bg: #17181b;
+  --panel: #212327;
+  --panel-raised: #292b30;
+  --text: #f3f4f6;
+  --muted: #9aa0a6;
+  --accent: #22d3ee;
+  --accent-text: #05262c;
+  --danger: #f87171;
+  --border: #33363b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  width: 320px;
+  padding: 22px 24px 24px;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+header {
+  margin-bottom: 18px;
+}
+.brand {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0 0 2px;
+}
+.sub {
+  color: var(--muted);
+  margin: 0;
+  font-size: 12.5px;
+}
+
+.status-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-bottom: 18px;
+}
+.status-text {
+  font-size: 13.5px;
+  line-height: 1.4;
+}
+.status-state {
+  font-weight: 600;
+}
+.status-state.on {
+  color: var(--accent);
+}
+.status-detail {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.toggle-btn {
+  border: none;
+  border-radius: 999px;
+  padding: 9px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  background: var(--accent);
+  color: var(--accent-text);
+  transition: filter 0.15s;
+}
+.toggle-btn:hover {
+  filter: brightness(1.08);
+}
+.toggle-btn.stop {
+  background: transparent;
+  color: var(--danger);
+  border: 1px solid var(--danger);
+}
+
+.section-label {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.preset-btn {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 0;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.preset-btn:hover {
+  border-color: var(--accent);
+}
+.preset-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.custom-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.custom-row input[type="number"],
+.custom-row select {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+.custom-row input[type="number"] {
+  width: 90px;
+}
+.custom-row select {
+  flex: 1;
+}
+.custom-row input:focus,
+.custom-row select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.tip {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+  margin-top: 4px;
+}

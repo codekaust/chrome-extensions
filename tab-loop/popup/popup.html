@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TabLoop</title>
+    <link rel="stylesheet" href="../styles/app.css" />
+  </head>
+  <body>
+    <header>
+      <h1 class="brand">TabLoop</h1>
+      <p class="sub">Auto-refresh this tab on a timer</p>
+    </header>
+
+    <main>
+      <div class="status-card">
+        <div class="status-text">
+          <div class="status-state" id="status-state">Off</div>
+          <div class="status-detail" id="status-detail">Pick an interval and start</div>
+        </div>
+        <button id="toggle" class="toggle-btn">Start</button>
+      </div>
+
+      <p class="section-label">Interval</p>
+      <div class="presets" id="presets"></div>
+
+      <div class="custom-row">
+        <input type="number" id="custom-value" min="1" step="1" value="30" aria-label="Custom interval value" />
+        <select id="custom-unit" aria-label="Custom interval unit">
+          <option value="1">Seconds</option>
+          <option value="60">Minutes</option>
+          <option value="3600">Hours</option>
+        </select>
+      </div>
+      <p class="tip">Minimum interval is 3 seconds, so a typo can't hammer a page with reloads.</p>
+    </main>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
