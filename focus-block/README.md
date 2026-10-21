@@ -16,9 +16,14 @@ ever leaving your machine.
 - **Two block modes** — block a site **Always** (locked all the time) or
   **During Focus only** (usable normally, but locked whenever a focus session is
   running). Set it in one click from the popup, or manage both lists in Settings.
-  Subdomains are covered automatically (`youtube.com` also blocks `m.youtube.com`).
+  An entry blocks exactly that site (`www.` included): blocking `youtube.com`
+  leaves `music.youtube.com` alone — add a subdomain as its own entry to block it.
+- **Redirect-friendly** — a blocked site gets a 3-second grace period before
+  the block page appears, so sign-in flows, link shorteners, and other redirect
+  chains that merely *pass through* a blocked site keep working.
 - **A calm block page** — blocked sites redirect to a friendly page with a
-  focus quote (switchable to a clean, quote-free page in Settings).
+  focus quote (switchable to a clean, quote-free page in Settings). Take a break
+  or unblock from there and you land right back on the exact page you wanted.
 - **Timed breaks** — need a site for a minute? Unblock it for **5, 15, or 30
   minutes** straight from the popup or the block page. It re-blocks itself
   automatically when time's up.
@@ -65,17 +70,22 @@ then be asked for it before unblocking, editing the list, or ending focus early.
 
 ## How it works
 
-FocusBlock uses Chrome's [`declarativeNetRequest`](https://developer.chrome.com/docs/extensions/reference/api/declarativeNetRequest)
-API. The background service worker keeps a single source of truth in
-`chrome.storage.local` and recomputes the set of dynamic redirect rules whenever
-anything changes:
+The background service worker keeps a single source of truth in
+`chrome.storage.local` and recomputes the set of currently-blocked sites
+whenever anything changes (list edits, breaks, focus start/end):
 
-- Every blocked domain gets a `main_frame` redirect rule pointing at the
-  extension's block page.
-- A domain on an active timed break is excluded from the rule set; a
-  `chrome.alarms` timer fires when the break ends to re-add it.
-- When Focus Mode is active, all breaks are ignored so the full list stays
-  locked; another alarm ends the session and (optionally) notifies you.
+- **New navigations.** When a tab navigates to a blocked site, a 3-second grace
+  timer starts. When it ends, the worker checks where the tab *actually is*: if
+  it's still on the blocked site it goes to the block page (carrying the
+  original URL); if it redirected onward, it's left alone. Watching tabs rather
+  than intercepting requests also catches PWAs (x.com, Gmail) that serve pages
+  from their own service-worker cache.
+- **Already-open tabs.** When a site *becomes* blocked (added, focus starts, a
+  break ends), tabs already on it are sent to the block page immediately — once.
+- **Unblocking.** When a site becomes allowed (break, focus ends, removed from
+  the list), the block page sends itself back to the original URL.
+- Timed breaks and focus sessions end via `chrome.alarms`; while Focus Mode is
+  active, all breaks are ignored so the full list stays locked.
 
 Password gating is enforced in the service worker: sensitive actions
 (unblock / edit list / stop focus) require a SHA-256 password check before the
@@ -113,12 +123,10 @@ page, and block page stay perfectly consistent.
 | Permission | Why |
 | --- | --- |
 | `storage` | Save your block list, settings, and focus state locally. |
-| `tabs` | Read the current tab's URL to block/unblock it and reload after changes. |
+| `tabs` | See which site a tab is on, so blocked sites can be sent to the block page. |
 | `alarms` | Re-block sites when a timed break or focus session ends, and flush usage periodically. |
 | `idle` | Pause usage tracking when you step away, so only *active* time is counted. |
-| `declarativeNetRequest` | Redirect blocked sites to the block page. |
 | `notifications` | Notify you when a focus session finishes. |
-| `host_permissions: <all_urls>` | Needed so blocking rules can apply to any site you choose. |
 
 ## Privacy
 

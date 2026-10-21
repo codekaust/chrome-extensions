@@ -8,10 +8,8 @@
     "tabs",
     "alarms",
     "idle",
-    "declarativeNetRequest",
     "notifications"
   ],
-  "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background.js",
     "type": "module"
@@ -32,11 +30,5 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  },
-  "web_accessible_resources": [
-    {
-      "resources": ["blocked/blocked.html"],
-      "matches": ["<all_urls>"]
-    }
-  ]
+  }
 }

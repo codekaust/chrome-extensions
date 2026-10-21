@@ -45,15 +45,20 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
 
 ## Per-extension notes
 
-- **focus-block** — Site blocking via `declarativeNetRequest` dynamic rules
-  **plus** an active `chrome.tabs.update` redirect layer (`guardTab` on
-  `tabs.onUpdated` for new navigations; `enforceOpenTabs` for already-open tabs,
-  fired **only for domains newly added** to the blocked set — diffed against the
-  persisted `effectiveBlocked`, never on every recompute). The redirect layer is
-  essential: PWAs with their own service worker (x.com, mail.google.com) serve
-  navigations from cache so DNR never sees them. Both layers match subdomains
-  (`matchBlocked`). Enforcement is strictly transition-driven — a tab is only
-  navigated when its block state actually changes: site → block page when it
+- **focus-block** — Site blocking via `chrome.tabs.update` redirects only — **no
+  `declarativeNetRequest`** (and no host permissions): DNR fires before the page
+  loads, which breaks redirect chains that pass through a blocked site, and PWAs
+  (x.com, mail.google.com) bypass it anyway. `guardTab` (on `tabs.onUpdated`)
+  gives a new navigation a `GRACE_MS` (3s) grace period, then re-checks the
+  tab's *current* URL (`pendingUrl || url`) and blocks only if it stayed;
+  `enforceOpenTabs` redirects already-open tabs immediately, fired **only for
+  domains newly added** to the blocked set — diffed against the persisted
+  `effectiveBlocked`, never on every recompute. Matching is exact-host
+  (`matchBlocked`; `www.` stripped by `normalizeDomain`) — blocking
+  `youtube.com` must not block `music.youtube.com`. Redirects carry the original
+  URL in the block page's hash (`blockPageUrl`); the block page validates it is
+  on the same site before returning there. Enforcement is strictly
+  transition-driven — a tab is only navigated when its block state changes: site → block page when it
   becomes blocked, and the block page redirects *itself* back to the site
   (storage `onChanged` on focus/list/temp keys) when it becomes unblocked. No
   surface reloads a tab speculatively.

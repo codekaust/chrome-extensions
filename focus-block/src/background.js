@@ -1,4 +1,4 @@
-// FocusBlock service worker — owns all state, blocking rules, timers & notifications.
+// FocusBlock service worker — owns all state, blocking, timers & notifications.
 
 const DEFAULTS = {
   blockedSites: [],          // always blocked — hostnames, e.g. "youtube.com"
@@ -153,22 +153,24 @@ export function computeEffectiveBlocked(state, t) {
   return effective;
 }
 
-function blockPageUrl(dom) {
-  return chrome.runtime.getURL(`blocked/blocked.html?site=${encodeURIComponent(dom)}`);
+// The original URL rides along in the hash (not the query) so its own `?`/`&`
+// can't collide with `site`; the block page returns the user there once the
+// site is allowed again.
+export function blockPageUrl(dom, url) {
+  const base = chrome.runtime.getURL(`blocked/blocked.html?site=${encodeURIComponent(dom)}`);
+  return url ? `${base}#${encodeURIComponent(url)}` : base;
 }
 
-// Which blocked entry (if any) covers this domain? Matches the entry itself and
-// its subdomains (e.g. "x.com" covers "mobile.x.com"), mirroring how the
-// declarativeNetRequest `requestDomains` condition behaves.
+// Which blocked entry (if any) covers this domain? An entry blocks exactly that
+// host — "www." is the same host (normalizeDomain strips it), but any other
+// subdomain is a separate site: blocking "youtube.com" leaves
+// "music.youtube.com" alone. Block a subdomain by adding it as its own entry.
 export function matchBlocked(dom, blockedSet) {
   if (!dom) return null;
-  for (const b of blockedSet) {
-    if (dom === b || dom.endsWith(`.${b}`)) return b;
-  }
-  return null;
+  return blockedSet.includes(dom) ? dom : null;
 }
 
-async function recomputeRules() {
+async function recomputeBlocking() {
   const state = await getState();
   const t = now();
 
@@ -193,27 +195,6 @@ async function recomputeRules() {
 
   const focusActive = focus.active && focus.endsAt && focus.endsAt > t;
   const effective = computeEffectiveBlocked({ ...state, tempUnblocks: temp, focus }, t);
-
-  const rules = effective.map((dom, i) => ({
-    id: i + 1,
-    priority: 1,
-    action: {
-      type: 'redirect',
-      redirect: {
-        extensionPath: `/blocked/blocked.html?site=${encodeURIComponent(dom)}`,
-      },
-    },
-    condition: {
-      requestDomains: [dom],
-      resourceTypes: ['main_frame'],
-    },
-  }));
-
-  const existing = await chrome.declarativeNetRequest.getDynamicRules();
-  await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: existing.map((r) => r.id),
-    addRules: rules,
-  });
 
   // Only act on a *transition*. When a domain newly becomes blocked (focus
   // starts, a site is added, a break ends) we redirect any tab already sitting
@@ -245,22 +226,48 @@ async function enforceOpenTabs(blockedSet) {
   for (const tab of tabs || []) {
     const hit = matchBlocked(normalizeDomain(tab.url), blockedSet);
     if (hit && tab.id != null) {
-      try { await chrome.tabs.update(tab.id, { url: blockPageUrl(hit) }); } catch { /* tab gone */ }
+      try { await chrome.tabs.update(tab.id, { url: blockPageUrl(hit, tab.url) }); } catch { /* tab gone */ }
     }
   }
 }
 
-// Navigation-time guard: if a tab navigates to a blocked domain, redirect it to
-// the block page. This is the reliable backstop for service-worker-served pages
-// that slip past the declarativeNetRequest rule.
+// Navigation-time guard: when a tab navigates to a blocked domain, give it a
+// short grace period before showing the block page. Sites (sign-in flows, link
+// shorteners, OAuth hops) often pass *through* a blocked domain on their way
+// somewhere else; blocking at the first hop would break the whole chain. So we
+// wait, then look at where the tab actually is, and block only if it stayed.
+// (This is also why there are no declarativeNetRequest rules: those fire before
+// the page loads and can't grant a grace period. Tab-level checks also catch
+// PWAs that serve navigations from their own service worker cache.)
+export const GRACE_MS = 3000;
+const pendingGuards = new Set(); // tab ids with a grace timer running
+
 async function guardTab(tabId, url) {
   if (!/^https?:\/\//.test(url || '')) return;
-  const dom = normalizeDomain(url);
-  if (!dom) return;
+  // One timer per tab: further hops during the grace period don't extend it —
+  // the check reads the tab's URL at the end, wherever it ended up.
+  if (pendingGuards.has(tabId)) return;
   const state = await getState();
-  const hit = matchBlocked(dom, computeEffectiveBlocked(state, now()));
+  if (!matchBlocked(normalizeDomain(url), computeEffectiveBlocked(state, now()))) return;
+  if (pendingGuards.has(tabId)) return; // another nav scheduled one while we read
+  pendingGuards.add(tabId);
+  setTimeout(() => {
+    pendingGuards.delete(tabId);
+    blockIfStillThere(tabId);
+  }, GRACE_MS);
+}
+
+async function blockIfStillThere(tabId) {
+  let tab;
+  try { tab = await chrome.tabs.get(tabId); } catch { return; } // tab closed
+  // pendingUrl: the tab is already mid-navigation to somewhere else — judge
+  // the destination, not the page it's leaving.
+  const url = tab.pendingUrl || tab.url;
+  if (!/^https?:\/\//.test(url || '')) return;
+  const state = await getState();
+  const hit = matchBlocked(normalizeDomain(url), computeEffectiveBlocked(state, now()));
   if (hit) {
-    try { await chrome.tabs.update(tabId, { url: blockPageUrl(hit) }); } catch { /* tab gone */ }
+    try { await chrome.tabs.update(tabId, { url: blockPageUrl(hit, url) }); } catch { /* tab gone */ }
   }
 }
 
@@ -331,7 +338,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (mode === 'always') blocked.push(dom);
         else focusList.push(dom);
         await setState({ blockedSites: blocked, focusSites: focusList });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true, mode });
         break;
       }
@@ -344,7 +351,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const temp = { ...state.tempUnblocks };
         delete temp[dom];
         await setState({ blockedSites: list, focusSites: focusList, tempUnblocks: temp });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true });
         break;
       }
@@ -356,7 +363,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         }
         const temp = { ...state.tempUnblocks, [dom]: now() + msg.minutes * 60_000 };
         await setState({ tempUnblocks: temp });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true, endsAt: temp[dom] });
         break;
       }
@@ -365,7 +372,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const temp = { ...state.tempUnblocks };
         delete temp[dom];
         await setState({ tempUnblocks: temp });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true });
         break;
       }
@@ -376,7 +383,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           (msg.list || []).map(normalizeDomain).filter(Boolean)
         )];
         await setState({ blockedSites: cleaned });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true, list: cleaned });
         break;
       }
@@ -384,7 +391,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const dur = Math.max(1, msg.minutes || 25);
         const focus = { active: true, endsAt: now() + dur * 60_000, durationMin: dur };
         await setState({ focus });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true, focus });
         break;
       }
@@ -392,13 +399,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const gate = await requirePassword(state, msg.password);
         if (!gate.ok) return sendResponse(gate);
         await setState({ focus: { active: false, endsAt: null, durationMin: state.focus.durationMin } });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true });
         break;
       }
       case 'setSetting': {
         await setState({ settings: { ...state.settings, [msg.key]: msg.value } });
-        await recomputeRules();
+        await recomputeBlocking();
         sendResponse({ ok: true });
         break;
       }
@@ -448,7 +455,7 @@ async function requirePassword(state, provided) {
 
 // ---------- lifecycle ----------
 function bootstrap() {
-  recomputeRules();
+  recomputeBlocking();
   try { chrome.idle.setDetectionInterval(IDLE_THRESHOLD); } catch { /* ignore */ }
   chrome.alarms.create('flush', { periodInMinutes: 1 });
   updateSession();
@@ -458,18 +465,18 @@ chrome.runtime.onInstalled.addListener(bootstrap);
 chrome.runtime.onStartup.addListener(bootstrap);
 
 chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'recompute') recomputeRules();
+  if (alarm.name === 'recompute') recomputeBlocking();
   if (alarm.name === 'flush') updateSession();
 });
 
 // usage-tracking signals
 chrome.tabs.onActivated.addListener(() => updateSession());
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.url) guardTab(tabId, info.url);   // enforce blocks as soon as a nav starts
+  if (info.url) guardTab(tabId, info.url);   // block after the grace period
   if (tab.active && (info.url || info.status === 'complete')) updateSession();
 });
 chrome.windows.onFocusChanged.addListener(() => updateSession());
 chrome.idle.onStateChanged.addListener(() => updateSession());
 
-// keep rules fresh + start tracking when the worker spins up
+// keep blocking state fresh + start tracking when the worker spins up
 bootstrap();

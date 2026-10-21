@@ -63,13 +63,25 @@ function stillBlocked(state) {
   return false;
 }
 
+// Where the user was headed when the site got blocked: the worker puts the
+// original URL in the hash. Only trusted if it's http(s) on this very site —
+// otherwise fall back to the site's homepage.
+function destination() {
+  try {
+    const url = new URL(decodeURIComponent(location.hash.slice(1)));
+    const host = url.hostname.replace(/^www\./, '');
+    if (/^https?:$/.test(url.protocol) && host === site) return url.href;
+  } catch { /* no or malformed hash */ }
+  return `https://${site}`;
+}
+
 // Navigate back to the site exactly once — guarded so overlapping triggers
 // (a storage change *and* the focus-end timer, say) can't cause a double load.
 let leaving = false;
 function goToSite() {
   if (leaving || !site) return;
   leaving = true;
-  location.href = `https://${site}`;
+  location.href = destination();
 }
 
 // When the site stops being blocked (focus ends, unblocked elsewhere, or a

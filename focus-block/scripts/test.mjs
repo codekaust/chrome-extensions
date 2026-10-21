@@ -1,12 +1,11 @@
 // Logic tests for the FocusBlock service worker.
 // Mocks the `chrome.*` APIs, loads background.js, dispatches real messages,
-// and asserts on the resulting storage + declarativeNetRequest rules.
+// and asserts on the resulting storage + tab redirects.
 
 let alarmHandler = null;
 let msgHandler = null;
 let updatedHandler = null;
 const store = {};
-let dynamicRules = [];
 let badgeText = '';
 const notifications = [];
 
@@ -16,6 +15,16 @@ let mockTabs = { 1: [{ active: true, url: 'https://example.com/x' }] };
 let mockIdle = 'active';
 let mockAllTabs = [];        // returned for url-pattern queries (enforceOpenTabs)
 let updatedTabs = [];        // { id, url } passed to chrome.tabs.update
+let tabById = {};            // what chrome.tabs.get returns (where a tab is *now*)
+
+// Grace-period timers are captured instead of waited on, so tests can fire
+// them on demand ("3 seconds later…").
+const realSetTimeout = globalThis.setTimeout;
+let graceTimers = [];
+globalThis.setTimeout = (fn, ms, ...rest) => {
+  if (ms === 3000) { graceTimers.push(fn); return 0; }
+  return realSetTimeout(fn, ms, ...rest);
+};
 
 globalThis.chrome = {
   storage: {
@@ -26,13 +35,6 @@ globalThis.chrome = {
         return out;
       },
       async set(patch) { Object.assign(store, patch); },
-    },
-  },
-  declarativeNetRequest: {
-    async getDynamicRules() { return dynamicRules; },
-    async updateDynamicRules({ removeRuleIds = [], addRules = [] }) {
-      dynamicRules = dynamicRules.filter((r) => !removeRuleIds.includes(r.id));
-      dynamicRules.push(...addRules);
     },
   },
   action: {
@@ -51,6 +53,10 @@ globalThis.chrome = {
       return mockTabs[windowId] || [];
     },
     async update(id, props) { updatedTabs.push({ id, ...props }); },
+    async get(id) {
+      if (!tabById[id]) throw new Error('No tab');
+      return tabById[id];
+    },
     onActivated: { addListener() {} },
     onUpdated: { addListener(fn) { updatedHandler = fn; } },
   },
@@ -71,7 +77,7 @@ globalThis.chrome = {
   },
 };
 
-await import('../src/background.js');
+const { matchBlocked, blockPageUrl, GRACE_MS } = await import('../src/background.js');
 
 // dispatch a message and await sendResponse
 function dispatch(msg) {
@@ -85,8 +91,9 @@ function assert(cond, label) {
   if (cond) { passed++; console.log(`  ✓ ${label}`); }
   else { failed++; console.error(`  ✗ ${label}`); }
 }
-const blockedDomains = () =>
-  dynamicRules.map((r) => r.condition.requestDomains[0]).sort();
+const blockedDomains = () => [...(store.effectiveBlocked || [])].sort();
+// the original URL carried in a block-page redirect's hash
+const carriedUrl = (u) => decodeURIComponent(u.split('#')[1] || '');
 
 console.log('\nFocusBlock logic tests\n');
 
@@ -95,11 +102,11 @@ console.log('block / unblock');
 await dispatch({ type: 'blockSite', domain: 'https://www.youtube.com/watch?x=1' });
 await dispatch({ type: 'blockSite', domain: 'reddit.com' });
 assert(store.blockedSites.join(',') === 'youtube.com,reddit.com', 'normalizes + stores two domains');
-assert(JSON.stringify(blockedDomains()) === '["reddit.com","youtube.com"]', 'creates a rule per blocked domain');
+assert(JSON.stringify(blockedDomains()) === '["reddit.com","youtube.com"]', 'both domains are enforced');
 
 await dispatch({ type: 'unblockSite', domain: 'reddit.com' });
 assert(store.blockedSites.join(',') === 'youtube.com', 'unblock removes from list');
-assert(blockedDomains().join(',') === 'youtube.com', 'unblock removes the rule');
+assert(blockedDomains().join(',') === 'youtube.com', 'unblock stops enforcing it');
 
 // --- temp unblock ---
 console.log('timed break');
@@ -195,7 +202,8 @@ console.log('enforce open tabs');
 mockAllTabs = [
   { id: 11, url: 'https://x.com/home' },        // will be blocked during focus
   { id: 12, url: 'https://news.ycombinator.com/' }, // never blocked
-  { id: 13, url: 'https://mobile.x.com/home' }, // subdomain of a blocked site
+  { id: 13, url: 'https://mobile.x.com/home' }, // other subdomain — a separate site
+  { id: 14, url: 'https://www.x.com/i/bookmarks?tab=2' }, // www. is the same site
 ];
 await dispatch({ type: 'blockSite', domain: 'x.com', mode: 'focus' });
 updatedTabs = [];
@@ -204,8 +212,13 @@ const redirectedIds = updatedTabs.map((u) => u.id);
 assert(redirectedIds.includes(11), 'open tab on a newly-blocked site is redirected at focus start');
 assert(updatedTabs.find((u) => u.id === 11)?.url.includes('site=x.com'),
   'redirect points at the block page for that site');
+assert(carriedUrl(updatedTabs.find((u) => u.id === 11).url) === 'https://x.com/home',
+  'redirect carries the original URL for the block page to return to');
 assert(!redirectedIds.includes(12), 'tab on an allowed site is left alone');
-assert(redirectedIds.includes(13), 'subdomain of a blocked site is also redirected');
+assert(!redirectedIds.includes(13), 'other subdomains of a blocked site are left alone');
+assert(redirectedIds.includes(14), 'www. of a blocked site is redirected');
+assert(carriedUrl(updatedTabs.find((u) => u.id === 14).url) === 'https://www.x.com/i/bookmarks?tab=2',
+  'full path + query survive the round trip');
 // A later recompute that does NOT change the blocked set must not touch tabs
 // again — this is the whole "stop reloading for no reason" fix.
 updatedTabs = [];
@@ -214,22 +227,78 @@ assert(updatedTabs.length === 0, 'a recompute with no block-set change reloads n
 await dispatch({ type: 'stopFocus' });
 mockAllTabs = [];
 
-// navigation-time guard redirects a fresh navigation to a blocked site
-console.log('navigation guard');
-const flush = () => new Promise((r) => setTimeout(r, 0)); // let async guardTab settle
+// navigation guard: blocked only if the tab is *still there* after the grace
+console.log('navigation guard (grace period)');
+const flush = () => new Promise((r) => realSetTimeout(r, 0)); // let async guardTab settle
+const fireGrace = async () => {
+  const fns = graceTimers; graceTimers = [];
+  fns.forEach((fn) => fn());
+  await flush(); await flush();
+};
+assert(GRACE_MS === 3000, 'grace period is 3 seconds');
 await dispatch({ type: 'blockSite', domain: 'x.com', mode: 'always' });
-updatedTabs = [];
-updatedHandler(99, { url: 'https://x.com/anything' }, { active: true });
+
+updatedTabs = []; graceTimers = [];
+tabById[99] = { id: 99, url: 'https://x.com/anything?q=1' };
+updatedHandler(99, { url: 'https://x.com/anything?q=1' }, { active: true });
 await flush();
-assert(updatedTabs.some((u) => u.id === 99 && u.url.includes('site=x.com')),
-  'navigating to a blocked site is redirected to the block page');
+assert(updatedTabs.length === 0, 'blocked site is NOT redirected immediately');
+assert(graceTimers.length === 1, 'a grace timer is started');
+await fireGrace();
+const r99 = updatedTabs.find((u) => u.id === 99);
+assert(r99 && r99.url.includes('site=x.com'), 'still on the blocked site after the grace → block page');
+assert(carriedUrl(r99.url) === 'https://x.com/anything?q=1', 'block page gets the exact URL (path + query)');
+
+// redirect chain: passes through x.com, ends up elsewhere within the grace
 updatedTabs = [];
-// block page / extension URLs must never be re-redirected (no loop)
+tabById[96] = { id: 96, url: 'https://x.com/oauth/redirect' };
+updatedHandler(96, { url: 'https://x.com/oauth/redirect' }, { active: true });
+await flush();
+tabById[96] = { id: 96, url: 'https://news.ycombinator.com/' };   // hopped onward
+updatedHandler(96, { url: 'https://news.ycombinator.com/' }, { active: true });
+await flush();
+assert(graceTimers.length === 1, 'further hops do not start a second timer');
+await fireGrace();
+assert(updatedTabs.length === 0, 'a tab that only passed through a blocked site is left alone');
+
+// mid-navigation away: judge pendingUrl, not the page being left
+tabById[95] = { id: 95, url: 'https://x.com/', pendingUrl: 'https://example.com/' };
+updatedHandler(95, { url: 'https://x.com/' }, { active: true });
+await flush();
+await fireGrace();
+assert(updatedTabs.length === 0, 'a tab already navigating away is left alone');
+
+// a break started during the grace period wins
+updatedHandler(99, { url: 'https://x.com/again' }, { active: true });
+await flush();
+await dispatch({ type: 'tempUnblock', domain: 'x.com', minutes: 5 });
+await fireGrace();
+assert(updatedTabs.length === 0, 'block state is re-checked when the grace ends');
+await dispatch({ type: 'reblockNow', domain: 'x.com' });
+updatedTabs = [];
+
+// closed during the grace → no error, nothing to do
+updatedHandler(94, { url: 'https://x.com/' }, { active: true });
+await flush();
+await fireGrace();
+assert(updatedTabs.length === 0, 'a tab closed during the grace is ignored');
+
+// non-blocked + extension URLs never even start a timer (no loop, no waste)
 updatedHandler(98, { url: 'chrome-extension://abc/blocked/blocked.html?site=x.com' }, { active: true });
 updatedHandler(97, { url: 'https://news.ycombinator.com/' }, { active: true });
+updatedHandler(93, { url: 'https://mobile.x.com/' }, { active: true });
 await flush();
-assert(updatedTabs.length === 0, 'allowed sites and the block page are not redirected');
+assert(graceTimers.length === 0, 'allowed sites, subdomains, and the block page start no timer');
 await dispatch({ type: 'unblockSite', domain: 'x.com' });
+
+// --- exact-host matching (not subdomains) ---
+console.log('exact-host matching');
+assert(matchBlocked('youtube.com', ['youtube.com']) === 'youtube.com', 'the entry itself matches');
+assert(matchBlocked('music.youtube.com', ['youtube.com']) === null, 'a subdomain is a separate site');
+assert(matchBlocked('youtube.com', ['music.youtube.com']) === null, 'blocking a subdomain leaves the parent alone');
+assert(matchBlocked('notyoutube.com', ['youtube.com']) === null, 'suffix lookalikes do not match');
+assert(blockPageUrl('a.com', 'https://a.com/x?y=1&z=2#h').endsWith('#' + encodeURIComponent('https://a.com/x?y=1&z=2#h')),
+  'block page URL encodes the original URL into the hash');
 
 // --- password gating ---
 console.log('password protection');
