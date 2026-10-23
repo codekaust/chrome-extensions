@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FocusBlock",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Keep your browsing in check. Block time-wasting sites, run focus sessions, and take timed breaks when you really need them.",
   "permissions": [
     "storage",

@@ -1,3 +1,4 @@
+import { renderPie } from './pie.js';
 import { dayKey, shiftDay, parseDay, dateLabel, fmtDuration, summarize } from '../src/stats.js';
 
 const el = id => document.getElementById(id);
@@ -76,7 +77,9 @@ function render() {
   const picker = el('historyDay');
   picker.min = start; picker.max = end;
   if (!picker.value || picker.value < start || picker.value > end) picker.value = end;
-  renderActivity(); renderWeekdays(); renderSites(); renderDay();
+  renderActivity(); renderWeekdays();
+  renderPie(el('historySitesPie'), report.sites, 'Sites in this period');
+  renderSites(); renderDay();
 }
 function bar(label, total, max, action, selected = false) {
   const col = document.createElement(action ? 'button' : 'div');
@@ -161,6 +164,7 @@ function renderDay() {
   const d = report.days.find(d => d.key === el('historyDay').value);
   if (!d) return;
   el('historyDaySummary').textContent = `${dateLabel(d.key)} · ${fmtDuration(d.total)} total · ${d.sites.length} sites`;
+  renderPie(el('historyDayPie'), d.sites, dateLabel(d.key));
   tableRows('historyDaySites', d.sites, d.total);
 }
 el('refreshStats').addEventListener('click', refreshStats);

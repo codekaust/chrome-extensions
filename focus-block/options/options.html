@@ -44,13 +44,15 @@
       </div>
       <div class="insight-card"><h2>Average activity by weekday</h2><p class="muted small">Average per calendar day in the selected period, including days with no records.</p><div id="weekdayChart" class="weekday-chart"></div></div>
       <div class="insight-card">
-        <h2>Sites in this period</h2><p class="muted small">Every recorded site, ranked by total usage. Bars show each site's share of the period.</p>
-        <label class="search-label">Find a site<input id="historySearch" type="search" class="input" placeholder="Search domains…" /></label>
+        <h2>Sites in this period</h2><p class="muted small">The top 7 sites by usage, with remaining sites grouped as Others. Hover or focus a slice for its time and share.</p>
+        <div id="historySitesPie" class="usage-pie"></div>
+        <label class="search-label">Find a site in the full table<input id="historySearch" type="search" class="input" placeholder="Search domains…" /></label>
         <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Recorded time</th><th>Share</th><th>Active days</th></tr></thead><tbody id="historySites"></tbody></table></div>
       </div>
       <div class="insight-card" id="dayDetails">
         <div class="dashboard-heading"><h2>Daily details</h2><label>Day <input id="historyDay" type="date" class="input" /></label></div>
         <p id="historyDaySummary" class="muted" aria-live="polite"></p>
+        <div id="historyDayPie" class="usage-pie"></div>
         <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Recorded time</th><th>Share of day</th></tr></thead><tbody id="historyDaySites"></tbody></table></div>
       </div>
     </section>

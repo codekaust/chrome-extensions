@@ -176,3 +176,14 @@ The popup shows total usage today and over seven days. Options shows total usage
 daily average, unique sites and active days. Same-site overlapping intervals count
 once; concurrent activity on different sites still contributes to each site.
 Older daily totals are combined by addition with a visible overlap limitation.
+
+### Site-share pie charts
+
+Period and daily site breakdowns show the top seven sites plus an Others slice
+containing all remaining usage. The legend includes each slice's time and share;
+Others also shows its site count. Full searchable tables remain below the charts.
+Categorical colors (`--pie-1` through `--pie-7`, plus `--pie-others`) are a scoped
+exception to the single-accent rule. Every slice has a text label, tooltip, and
+keyboard focus treatment; colors alone never carry the data. Empty data shows
+an empty state, and a single site renders a full circle. Table search does not
+change the chart denominator or hide usage from the pie.

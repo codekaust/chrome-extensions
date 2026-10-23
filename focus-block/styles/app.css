@@ -405,3 +405,28 @@ button.bar-col:focus-visible { outline: 2px solid var(--brand); outline-offset: 
 }
 .stats-metric { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); font-size: 13px; font-weight: 600; }
 .stats-note { color: var(--text-2); font-size: 11px; margin-bottom: var(--s4); }
+
+/* Categorical chart colors are reserved for site-share visualizations. */
+:root {
+  --pie-1: #4F46E5; --pie-2: #0891B2; --pie-3: #059669;
+  --pie-4: #D97706; --pie-5: #DB2777; --pie-6: #7C3AED;
+  --pie-7: #2563EB; --pie-others: #64748B;
+}
+.usage-pie { display: flex; align-items: center; gap: var(--s8); margin: var(--s5) 0 var(--s8); }
+.usage-pie-figure { flex: 0 0 260px; margin: 0; text-align: center; }
+.usage-pie svg { display: block; width: 100%; overflow: visible; }
+.usage-pie svg path, .usage-pie svg circle { stroke: var(--surface); stroke-width: 1.5; transition: opacity .15s; }
+.usage-pie svg .highlight { opacity: .75; stroke: var(--ink); stroke-width: 2; }
+.usage-pie svg :focus-visible { outline: none; stroke: var(--ink); stroke-width: 3; }
+.usage-pie figcaption { margin-top: var(--s2); color: var(--text-2); font-size: 13px; font-weight: 600; }
+.usage-pie-legend { flex: 1; min-width: 0; list-style: none; padding: 0; margin: 0; }
+.usage-pie-legend li { display: flex; align-items: center; gap: var(--s2); padding: var(--s2); border-radius: var(--r-sm); font-size: 13px; }
+.usage-pie-legend li.highlight { background: var(--surface-2); }
+.usage-pie-swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.usage-pie-site { flex: 1; overflow-wrap: anywhere; min-width: 0; }
+.usage-pie-value { flex: none; font-variant-numeric: tabular-nums; color: var(--text-2); }
+@media (max-width: 760px) {
+  .usage-pie { flex-direction: column; gap: var(--s4); }
+  .usage-pie-figure { flex-basis: auto; width: min(260px, 100%); }
+  .usage-pie-legend { width: 100%; }
+}
