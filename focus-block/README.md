@@ -35,10 +35,9 @@ ever leaving your machine.
   (only while the tab is focused and you're actually at the keyboard). See
   today's total and a clickable 7-day chart: choose any day to see its usage
   and top sites. Open **Stats** in the full options page for all saved history,
-  date filters, daily/monthly charts, weekday averages, searchable site totals,
+  date filters, daily/monthly charts, weekday averages, site usage shares,
   and complete daily details. Period and daily pie charts show the top seven
-  sites plus an **Others** slice, with durations and percentages. Full tables
-  remain available below each chart. New history is no longer pruned after 30 days;
+  sites plus an **Others** slice, with durations and percentages. The charts and legends keep the breakdown compact. New history is no longer pruned after 30 days;
   records deleted by older versions cannot be recovered. Tracking is on by default and can be
   toggled or cleared in Settings.
 - **Combined usage** — focused browsing and background video/audio appear in

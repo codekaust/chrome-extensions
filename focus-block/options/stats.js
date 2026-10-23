@@ -79,7 +79,7 @@ function render() {
   if (!picker.value || picker.value < start || picker.value > end) picker.value = end;
   renderActivity(); renderWeekdays();
   renderPie(el('historySitesPie'), report.sites, 'Sites in this period');
-  renderSites(); renderDay();
+  renderDay();
 }
 function bar(label, total, max, action, selected = false) {
   const col = document.createElement(action ? 'button' : 'div');
@@ -134,44 +134,17 @@ function renderWeekdays() {
   el('weekdayChart').replaceChildren(...[1, 2, 3, 4, 5, 6, 0].map(i =>
     bar(['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][i], averages[i], Math.max(1, ...averages))));
 }
-function tableRows(target, sites, total, counts) {
-  const rows = sites.map(site => {
-    const row = document.createElement('tr');
-    const name = textNode('td', site.domain);
-    const share = total ? site.seconds / total * 100 : 0;
-    const shareCell = textNode('td', `${share.toFixed(1)}%`);
-    const track = textNode('div', '', 'site-track');
-    const fill = textNode('div', '', 'site-fill'); fill.style.width = `${share}%`; track.append(fill); shareCell.append(track);
-    row.append(name, textNode('td', fmtDuration(site.seconds)), shareCell);
-    if (counts) row.append(textNode('td', String(counts.get(site.domain) || 0)));
-    return row;
-  });
-  if (!rows.length) {
-    const row = document.createElement('tr'), cell = textNode('td', 'No recorded activity matches this selection.', 'stats-empty');
-    cell.colSpan = counts ? 4 : 3; row.append(cell); rows.push(row);
-  }
-  el(target).replaceChildren(...rows);
-}
-function renderSites() {
-  if (!report) return;
-  const query = el('historySearch').value.trim().toLowerCase();
-  const counts = new Map();
-  for (const day of report.days) for (const site of day.sites) counts.set(site.domain, (counts.get(site.domain) || 0) + 1);
-  tableRows('historySites', report.sites.filter(s => s.domain.includes(query)), report.total, counts);
-}
 function renderDay() {
   if (!report) return;
   const d = report.days.find(d => d.key === el('historyDay').value);
   if (!d) return;
   el('historyDaySummary').textContent = `${dateLabel(d.key)} · ${fmtDuration(d.total)} total · ${d.sites.length} sites`;
   renderPie(el('historyDayPie'), d.sites, dateLabel(d.key));
-  tableRows('historyDaySites', d.sites, d.total);
 }
 el('refreshStats').addEventListener('click', refreshStats);
 el('historyRange').addEventListener('change', applyRange);
 for (const id of ['historyStart', 'historyEnd']) el(id).addEventListener('change', () => { el('historyRange').value = 'custom'; render(); });
 el('historyGrouping').addEventListener('change', () => { if (report) renderActivity(); });
-el('historySearch').addEventListener('input', renderSites);
 el('historyDay').addEventListener('change', () => { renderDay(); if (report) renderActivity(); });
 // Apply storage events directly. Fetching getStats here would flush usage again
 // and could create a feedback loop while another browser window is active.

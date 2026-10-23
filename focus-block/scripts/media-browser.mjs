@@ -86,7 +86,7 @@ try {
   console.log('PASS: Web Audio without HTML media uses browser audio detection');
   await options.bringToFront();await options.click('#refreshStats');
   assert.equal(await options.locator('#historyMetric').count(),0);
-  await options.waitForFunction(()=>document.querySelector('#historySites').textContent.includes('video.test'));
+  await options.waitForFunction(()=>document.querySelector('#historySitesPie').textContent.includes('video.test'));
   assert.match(await options.locator('#historyDaySummary').innerText(),/total/);
   assert.equal(await options.locator('#historySummary .stat-label').nth(0).textContent(),'Total usage');
   const popup=await context.newPage();await popup.goto(`chrome-extension://${id}/popup/popup.html`);await popup.click('[data-tab="stats"]');
