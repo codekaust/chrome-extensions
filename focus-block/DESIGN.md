@@ -175,7 +175,7 @@ Browsing and media playback share one Stats view without a measure selector.
 The popup shows total usage today and over seven days. Options shows total usage,
 daily average, unique sites and active days. Same-site overlapping intervals count
 once; concurrent activity on different sites still contributes to each site.
-Older daily totals are combined by addition with a visible overlap limitation.
+Older daily totals are combined by addition; the historical overlap limitation is documented in README.
 
 ### Site-share pie charts
 
@@ -192,3 +192,8 @@ Its scrollable list contains only the grouped sites, ranked by usage, with time
 and percentage of the full chart. Native legend buttons and SVG button semantics
 support keyboard activation and expose expanded state. Automatic chart updates
 preserve the expanded state and list scroll position.
+
+The history page opens with its title, Refresh button, and compact date filters.
+Explanatory tracking/version paragraphs stay out of this header. Period and date
+controls share a 44px height with consistent padding; the select reserves space
+for its arrow. On small screens Period spans a row above the two date fields.

@@ -45,7 +45,7 @@ ever leaving your machine.
   one Stats view across HTTP(S) websites, including Prime Video, YouTube,
   YouTube Music, and embedded players. Overlapping activity on the same site
   counts once from version 1.3 onward. Existing daily totals are preserved by
-  addition; historical overlap cannot be recovered and is flagged in the dashboard.
+  addition; historical overlap cannot be recovered.
 - **Password protection** — optionally require a password to unblock sites,
   edit your list, or end a focus session early, so it's harder to give in to
   impulse.

@@ -22,13 +22,7 @@
 
   <main class="wrap">
     <section id="view-stats" class="view">
-      <div class="dashboard-heading"><div><p class="eyebrow">YOUR BROWSING, IN PERSPECTIVE</p><h1>Usage history</h1></div><button id="refreshStats" class="btn btn-soft">Refresh</button></div>
-      <p class="muted">Browsing and background playback in one view, from a single day to every saved record.</p>
-      <p class="muted small">Usage includes focused browsing and background video/audio. Overlapping activity on the same site counts once. Different sites can run simultaneously, so the total is site usage, not unique screen time.</p>
-      <p id="historyLegacy" class="muted small hidden">Earlier browsing and playback totals were added together. Overlap before this update cannot be reconstructed, so those older totals may be higher.</p>
-      <p class="muted small">Playback history starts with version 1.2. Browser audio detection supplements video/audio players and may include a brief tail after sound stops. Browser-restricted pages and inaccessible silent players cannot be measured.</p>
-      <p id="historyCoverage" class="muted small"></p>
-      <p class="muted small">Older versions retained about 30 days. Previously deleted records cannot be recovered. History now stays on this device until you clear it. Days without records mean no recorded activity, not necessarily no browsing. Hourly activity and past focus sessions were not recorded.</p>
+      <div class="dashboard-heading"><h1>Usage history</h1><button id="refreshStats" class="btn btn-soft">Refresh</button></div>
       <p id="historyStatus" class="msg" role="status"></p>
       <div class="history-filters">
         <label>Period<select id="historyRange" class="input"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all" selected>All history</option><option value="custom">Custom dates</option></select></label>

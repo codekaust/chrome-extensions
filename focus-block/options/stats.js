@@ -40,13 +40,8 @@ export async function refreshStats() {
 function applySnapshot(stats) {
   trackingOn = stats.trackingOn;
   usage = stats.combinedUsage || {};
-  el('historyLegacy').classList.toggle('hidden', !stats.legacyCombined);
   today = stats.todayKey;
   for (const id of ['historyStart', 'historyEnd', 'historyDay']) el(id).max = today;
-  const keys = Object.keys(usage).sort();
-  el('historyCoverage').textContent = keys.length
-    ? `Saved records: ${dateLabel(keys[0])} – ${dateLabel(keys.at(-1))} · ${keys.length} days with records`
-    : 'No saved activity yet. Your history will appear here as you browse.';
   el('historyStatus').textContent = stats.trackingOn ? '' : 'Tracking is paused. Saved history remains available. Enable tracking in General settings.';
   applyRange();
 }
@@ -149,11 +144,10 @@ el('historyDay').addEventListener('change', () => { renderDay(); if (report) ren
 // Apply storage events directly. Fetching getStats here would flush usage again
 // and could create a feedback loop while another browser window is active.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (loading || area !== 'local' || (!changes.combinedUsage && !changes.legacyCombined && !changes.settings)) return;
+  if (loading || area !== 'local' || (!changes.combinedUsage && !changes.settings)) return;
   if (changes.settings) trackingOn = changes.settings.newValue?.trackUsage !== false;
   applySnapshot({
     combinedUsage: changes.combinedUsage ? changes.combinedUsage.newValue || {} : usage,
-    legacyCombined: changes.legacyCombined ? changes.legacyCombined.newValue : !el('historyLegacy').classList.contains('hidden'),
     todayKey: dayKey(), trackingOn,
   });
 });
