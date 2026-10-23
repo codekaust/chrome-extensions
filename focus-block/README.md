@@ -39,6 +39,13 @@ ever leaving your machine.
   and complete daily details. New history is no longer pruned after 30 days;
   records deleted by older versions cannot be recovered. Tracking is on by default and can be
   toggled or cleared in Settings.
+- **Background media playback** — tracks video and audio separately from active
+  browsing across HTTP(S) websites, including Prime Video, YouTube, YouTube Music,
+  and embedded players. Playback continues counting when you work in another
+  tab, window, or desktop app. Switch **Show → Media playback** in the popup or
+  **Measure → Media playback** in the full dashboard for its daily history,
+  graphs, and per-site totals. Browsing and playback overlap and are never
+  combined into a misleading screen-time total.
 - **Password protection** — optionally require a password to unblock sites,
   edit your list, or end a focus session early, so it's harder to give in to
   impulse.
@@ -125,11 +132,14 @@ page, and block page stay perfectly consistent.
 
 | Permission | Why |
 | --- | --- |
-| `storage` | Save your block list, settings, and focus state locally. |
+| `storage` | Save your block list, settings, focus state, and local browsing/playback history. |
 | `tabs` | See which site a tab is on, so blocked sites can be sent to the block page. |
 | `alarms` | Re-block sites when a timed break or focus session ends, and flush usage periodically. |
 | `idle` | Pause usage tracking when you step away, so only *active* time is counted. |
 | `notifications` | Notify you when a focus session finishes. |
+
+The manifest also injects a media observer into HTTP(S) pages and their frames,
+requiring site access so playback can be detected independently of window focus.
 
 ## Privacy
 
@@ -139,4 +149,34 @@ in the UI. All of your data lives on your device.
 
 ## Validation
 
-Run `node focus-block/scripts/test.mjs` and `node --test focus-block/scripts/stats.test.mjs` from the repository root. No compilation is required; reload the unpacked extension after updating.
+Run `node focus-block/scripts/test.mjs` and `node --test focus-block/scripts/*.test.mjs` from the repository root. No compilation is required; reload the unpacked extension after updating.
+
+## Media tracking details
+
+- HTML video/audio playback is measured from actual media progress, including
+  muted playback, background tabs, picture-in-picture, and accessible shadow DOM.
+  Browser audio detection supplements players using Web Audio or inaccessible DOM;
+  its speaker indicator can linger for a couple of seconds after sound stops.
+- Embedded players count under the host website. `www.youtube.com` is grouped
+  with `youtube.com`; `music.youtube.com` remains separate. Overlapping players
+  on the same domain count once. Simultaneous playback on different sites counts
+  for each site, so even the playback total is not unique elapsed screen time.
+- Paused/ended HTML players do not add time. Seeking and playback speed do not
+  inflate duration. Long gaps after sleep are discarded, and midnight intervals
+  split across local calendar dates.
+- Turning off tracking in General disables both browsing and playback. Clear
+  history clears both. Playback data starts with version 1.2 and cannot be
+  reconstructed for earlier days.
+- The content script needs site access to HTTP(S) pages and their frames. After
+  updating the unpacked extension, reload it and refresh existing media tabs.
+  Browser-protected pages and silent players inaccessible to content scripts
+  cannot be measured. This tracks detected playback, not whether you watched it.
+- Only per-domain durations and short-lived interval metadata are stored locally;
+  no titles, video URLs, page text, or media content are collected.
+
+Browser regression test (optional): install Playwright outside the extension,
+then run `node focus-block/scripts/media-browser.mjs`. Set `PLAYWRIGHT_MODULE`
+to its module path and `BROWSER_EXECUTABLE` to a Chromium browser executable if
+using an existing installation. This creates and removes an isolated profile;
+uses generated audio and fixture websites; and checks background, muted, embedded,
+paused, disabled, and cleared playback plus the popup and full-page statistics.

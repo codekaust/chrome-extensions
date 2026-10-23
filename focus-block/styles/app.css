@@ -403,3 +403,5 @@ button.bar-col:focus-visible { outline: 2px solid var(--brand); outline-offset: 
   .history-summary { grid-template-columns: repeat(2, 1fr); }
   .insight-card { padding: var(--s4); }
 }
+.stats-metric { display: flex; align-items: center; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s3); font-size: 13px; font-weight: 600; }
+.stats-note { color: var(--text-2); font-size: 11px; margin-bottom: var(--s4); }

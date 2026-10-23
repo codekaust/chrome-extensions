@@ -45,5 +45,8 @@ export function buildStats(state, t) {
   const todayKey = dayKey(t);
   const week = summarize(state.usage, shiftDay(todayKey, -6), todayKey);
   const today = week.days.at(-1);
-  return { todayKey, today: today.sites, todayTotal: today.total, weekTotal: week.total, days: week.days };
+  const mediaWeek = summarize(state.mediaUsage || {}, shiftDay(todayKey, -6), todayKey);
+  const mediaToday = mediaWeek.days.at(-1);
+  const media = { todayKey, today: mediaToday.sites, todayTotal: mediaToday.total, weekTotal: mediaWeek.total, days: mediaWeek.days };
+  return { media, todayKey, today: today.sites, todayTotal: today.total, weekTotal: week.total, days: week.days };
 }

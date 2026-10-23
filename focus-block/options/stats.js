@@ -1,6 +1,8 @@
 import { dayKey, shiftDay, parseDay, dateLabel, fmtDuration, summarize } from '../src/stats.js';
 
 const el = id => document.getElementById(id);
+let browsingUsage = {}, mediaUsage = {};
+const isMedia = () => el('historyMetric').value === 'media';
 let usage = {}, today = dayKey(), report = null;
 let loading = false;
 let trackingOn = true;
@@ -15,7 +17,7 @@ function applyRange() {
   if (range !== 'custom') {
     el('historyEnd').value = today;
     el('historyStart').value = range === 'all'
-      ? Object.keys(usage).filter(key => key <= today).sort()[0] || today
+      ? [...Object.keys(browsingUsage), ...Object.keys(mediaUsage)].filter(key => key <= today).sort()[0] || today
       : shiftDay(today, 1 - Number(range));
   }
   render();
@@ -38,7 +40,9 @@ export async function refreshStats() {
 }
 function applySnapshot(stats) {
   trackingOn = stats.trackingOn;
-  usage = stats.usage;
+  browsingUsage = stats.usage || {};
+  mediaUsage = stats.mediaUsage || {};
+  usage = isMedia() ? mediaUsage : browsingUsage;
   today = stats.todayKey;
   for (const id of ['historyStart', 'historyEnd', 'historyDay']) el(id).max = today;
   const keys = Object.keys(usage).sort();
@@ -59,17 +63,20 @@ function render() {
   }
   report = summarize(usage, start, end);
   const peak = report.days.reduce((best, d) => d.total > best.total ? d : best, report.days[0]);
+  const browsing = summarize(browsingUsage, start, end);
+  const media = summarize(mediaUsage, start, end);
   const cards = [
-    [fmtDuration(report.total), 'Total active time'],
-    [fmtDuration(report.total / report.days.length), 'Daily average'],
-    [String(report.sites.length), 'Unique sites'],
-    [`${report.activeDays} / ${report.days.length}`, 'Days with activity'],
+    [fmtDuration(browsing.total), 'Active browsing'],
+    [fmtDuration(media.total), 'Media playback'],
+    [fmtDuration(report.total / report.days.length), isMedia() ? 'Playback daily average' : 'Browsing daily average'],
+    [String(report.sites.length), isMedia() ? 'Sites playing media' : 'Sites browsed'],
   ];
   el('historySummary').replaceChildren(...cards.map(([value, label]) => {
     const card = textNode('div', '', 'stat-card');
     card.append(textNode('div', value, 'stat-value'), textNode('div', label, 'stat-label'));
     return card;
   }));
+  el('historyPeriodSummary').textContent = `${isMedia() ? 'Playback' : 'Browsing'} recorded on ${report.activeDays} of ${report.days.length} days${peak.total ? ` · Busiest day: ${dateLabel(peak.key)} (${fmtDuration(peak.total)})` : ''}`;
   el('historySummary').title = peak.total ? `Busiest day: ${dateLabel(peak.key)} · ${fmtDuration(peak.total)}` : 'No activity in this period';
   const picker = el('historyDay');
   picker.min = start; picker.max = end;
@@ -158,11 +165,14 @@ function renderDay() {
   if (!report) return;
   const d = report.days.find(d => d.key === el('historyDay').value);
   if (!d) return;
-  el('historyDaySummary').textContent = `${dateLabel(d.key)} · ${fmtDuration(d.total)} active · ${d.sites.length} sites`;
+  el('historyDaySummary').textContent = `${dateLabel(d.key)} · ${fmtDuration(d.total)} ${isMedia() ? 'playback' : 'active'} · ${d.sites.length} sites`;
   tableRows('historyDaySites', d.sites, d.total);
 }
 el('refreshStats').addEventListener('click', refreshStats);
 el('historyRange').addEventListener('change', applyRange);
+el('historyMetric').addEventListener('change', () => applySnapshot({
+  usage: browsingUsage, mediaUsage, todayKey: today, trackingOn,
+}));
 for (const id of ['historyStart', 'historyEnd']) el(id).addEventListener('change', () => { el('historyRange').value = 'custom'; render(); });
 el('historyGrouping').addEventListener('change', () => { if (report) renderActivity(); });
 el('historySearch').addEventListener('input', renderSites);
@@ -170,7 +180,11 @@ el('historyDay').addEventListener('change', () => { renderDay(); if (report) ren
 // Apply storage events directly. Fetching getStats here would flush usage again
 // and could create a feedback loop while another browser window is active.
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (loading || area !== 'local' || (!changes.usage && !changes.settings)) return;
+  if (loading || area !== 'local' || (!changes.usage && !changes.mediaUsage && !changes.settings)) return;
   if (changes.settings) trackingOn = changes.settings.newValue?.trackUsage !== false;
-  applySnapshot({ usage: changes.usage ? changes.usage.newValue || {} : usage, todayKey: dayKey(), trackingOn });
+  applySnapshot({
+    usage: changes.usage ? changes.usage.newValue || {} : browsingUsage,
+    mediaUsage: changes.mediaUsage ? changes.mediaUsage.newValue || {} : mediaUsage,
+    todayKey: dayKey(), trackingOn,
+  });
 });

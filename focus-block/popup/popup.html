@@ -96,10 +96,13 @@
 
   <!-- STATS TAB -->
   <section id="tab-stats" class="panel hidden">
+    <label class="stats-metric">Show <select id="statsMetric" class="input select"><option value="browsing">Active browsing</option><option value="media">Media playback</option></select></label>
+    <p id="statsBothTotals" class="muted small"></p>
+    <p class="stats-note">Playback includes background video and audio. It can overlap browsing; the totals are separate.</p>
     <div class="stats-summary">
       <div class="stat-card">
         <div class="stat-value" id="todayTotal">0m</div>
-        <div class="stat-label">Active today</div>
+        <div class="stat-label" id="todayMetricLabel">Active today</div>
       </div>
       <div class="stat-card">
         <div class="stat-value" id="weekTotal">0m</div>

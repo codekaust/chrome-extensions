@@ -1,4 +1,5 @@
 import { dayKey, buildStats } from './stats.js';
+import { creditMedia } from './media.js';
 
 // FocusBlock service worker — owns all state, blocking, timers & notifications.
 
@@ -17,6 +18,10 @@ const DEFAULTS = {
   },
   password: null,            // { hash } sha-256 hex, or null
   usage: {},                 // { "YYYY-MM-DD": { domain: seconds } }
+  mediaUsage: {},             // separate playback time; may overlap focused browsing
+  mediaCoverage: {},          // recent credited intervals, deduplicated per domain
+  mediaAudible: {},           // fallback sessions for tabs producing browser audio
+  mediaCutoff: 0,             // ignore reports from before clear/disable/enable
   session: null,             // { domain, since } — the in-progress active session
   effectiveBlocked: [],      // domains blocked as of the last recompute (for diffing)
 };
@@ -36,6 +41,50 @@ async function getState() {
 
 async function setState(patch) {
   await chrome.storage.local.set(patch);
+}
+
+// Serialize state mutations from tabs, frames, alarms and UI messages. This
+// prevents concurrent read/modify/write operations losing usage or undoing clear.
+let operation = Promise.resolve();
+function enqueue(fn) {
+  const result = operation.then(fn);
+  operation = result.catch(error => console.error('FocusBlock:', error));
+  return result;
+}
+
+// Browser audio supplements DOM players (e.g. Web Audio or closed shadow roots).
+// Chrome's audible indicator can linger briefly after sound stops.
+async function updateMediaAudible() {
+  const t = now();
+  const state = await getState();
+  if (!state.settings.trackUsage) return;
+  Object.assign(state, creditMedia(state, '', [], t)); // expire recent interval metadata
+  const tabs = await chrome.tabs.query({ audible: true });
+  const next = {};
+  for (const tab of tabs) {
+    if (tab.discarded || !/^https?:\/\//.test(tab.url || '')) continue;
+    const domain = normalizeDomain(tab.url);
+    if (domain) next[tab.id] = { domain, since: t };
+  }
+  for (const session of Object.values(state.mediaAudible)) {
+    Object.assign(state, creditMedia(state, session.domain, [[session.since, t]], t));
+  }
+  await setState({ mediaUsage: state.mediaUsage, mediaCoverage: state.mediaCoverage, mediaAudible: next });
+}
+
+async function receiveMedia(msg, sender) {
+  if (!sender.tab || !Array.isArray(msg.intervals) || msg.intervals.length > 512 ||
+      (sender.documentLifecycle && sender.documentLifecycle !== 'active')) return { ok: false };
+  let tab;
+  try { tab = await chrome.tabs.get(sender.tab.id); } catch { return { ok: false }; }
+  if (!/^https?:\/\//.test(tab.url || '') || tab.discarded) return { ok: false };
+  // Attribute embedded players to the website the user opened, not its CDN.
+  const domain = normalizeDomain(tab.url);
+  if (!domain || domain !== normalizeDomain(sender.tab.url)) return { ok: false };
+  const state = await getState();
+  if (!state.settings.trackUsage) return { ok: true };
+  await setState(creditMedia(state, domain, msg.intervals, now()));
+  return { ok: true };
 }
 
 // ---------- domain helpers ----------
@@ -285,7 +334,12 @@ async function sha256(text) {
 
 // ---------- message API ----------
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  (async () => {
+  enqueue(async () => {
+    if (msg.type === 'mediaProgress') return sendResponse(await receiveMedia(msg, _sender));
+    // Content scripts only report media. They cannot read history or mutate settings.
+    if (_sender.tab && !_sender.url?.startsWith(chrome.runtime.getURL(''))) {
+      return sendResponse({ ok: false, error: 'Extension page required' });
+    }
     const state = await getState();
     switch (msg.type) {
       case 'getState': {
@@ -375,6 +429,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
       case 'setSetting': {
+        if (msg.key === 'trackUsage') {
+          await updateSession();
+          await updateMediaAudible();
+          await setState({ session: null, mediaAudible: {}, mediaCoverage: {}, mediaCutoff: now() });
+        }
         await setState({ settings: { ...state.settings, [msg.key]: msg.value } });
         await recomputeBlocking();
         sendResponse({ ok: true });
@@ -397,11 +456,13 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
       case 'getStats': {
+        await updateMediaAudible();
         await updateSession(); // count the in-progress session up to now
         const fresh = await getState();
         const stats = buildStats(fresh, now());
         if (msg.includeHistory) {
           stats.usage = fresh.usage;
+          stats.mediaUsage = fresh.mediaUsage;
           stats.trackingOn = fresh.settings.trackUsage;
         }
         sendResponse({ ok: true, stats });
@@ -410,14 +471,14 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case 'clearStats': {
         const gate = await requirePassword(state, msg.password);
         if (!gate.ok) return sendResponse(gate);
-        await setState({ usage: {}, session: null });
+        await setState({ usage: {}, session: null, mediaUsage: {}, mediaCoverage: {}, mediaAudible: {}, mediaCutoff: now() });
         sendResponse({ ok: true });
         break;
       }
       default:
         sendResponse({ ok: false, error: 'Unknown message' });
     }
-  })();
+  }).catch(() => sendResponse({ ok: false, error: 'Could not update FocusBlock data.' }));
   return true; // async
 });
 
@@ -430,29 +491,35 @@ async function requirePassword(state, provided) {
 }
 
 // ---------- lifecycle ----------
-function bootstrap() {
-  recomputeBlocking();
-  try { chrome.idle.setDetectionInterval(IDLE_THRESHOLD); } catch { /* ignore */ }
-  chrome.alarms.create('flush', { periodInMinutes: 1 });
-  updateSession();
+function bootstrap(resetMedia = false) {
+  return enqueue(async () => {
+    if (resetMedia) await setState({ mediaAudible: {}, mediaCoverage: {}, mediaCutoff: now() });
+    await recomputeBlocking();
+    try { chrome.idle.setDetectionInterval(IDLE_THRESHOLD); } catch { /* ignore */ }
+    chrome.alarms.create('flush', { periodInMinutes: 1 });
+    await updateSession();
+    await updateMediaAudible();
+  });
 }
 
-chrome.runtime.onInstalled.addListener(bootstrap);
-chrome.runtime.onStartup.addListener(bootstrap);
+chrome.runtime.onInstalled.addListener(() => bootstrap(true));
+chrome.runtime.onStartup.addListener(() => bootstrap(true));
+chrome.alarms.onAlarm.addListener((alarm) => enqueue(async () => {
+  if (alarm.name === 'recompute') await recomputeBlocking();
+  if (alarm.name === 'flush') { await updateSession(); await updateMediaAudible(); }
+}));
 
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === 'recompute') recomputeBlocking();
-  if (alarm.name === 'flush') updateSession();
-});
-
-// usage-tracking signals
-chrome.tabs.onActivated.addListener(() => updateSession());
+chrome.tabs.onActivated.addListener(() => enqueue(updateSession));
 chrome.tabs.onUpdated.addListener((tabId, info, tab) => {
-  if (info.url) guardTab(tabId, info.url);   // block after the grace period
-  if (tab.active && (info.url || info.status === 'complete')) updateSession();
+  if (info.url) guardTab(tabId, info.url);
+  return enqueue(async () => {
+    if (tab.active && (info.url || info.status === 'complete')) await updateSession();
+    if ('audible' in info || info.url || 'discarded' in info) await updateMediaAudible();
+  });
 });
-chrome.windows.onFocusChanged.addListener(() => updateSession());
-chrome.idle.onStateChanged.addListener(() => updateSession());
+chrome.tabs.onRemoved.addListener(() => enqueue(updateMediaAudible));
+chrome.windows.onFocusChanged.addListener(() => enqueue(updateSession));
+chrome.idle.onStateChanged.addListener(() => enqueue(updateSession));
 
-// keep blocking state fresh + start tracking when the worker spins up
+// Worker restarts preserve recent coverage and clocks; browser restarts reset them.
 bootstrap();

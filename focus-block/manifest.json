@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "FocusBlock",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Keep your browsing in check. Block time-wasting sites, run focus sessions, and take timed breaks when you really need them.",
   "permissions": [
     "storage",
@@ -30,5 +30,19 @@
     "32": "icons/icon32.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://*/*",
+        "https://*/*"
+      ],
+      "js": [
+        "src/media-content.js"
+      ],
+      "all_frames": true,
+      "match_origin_as_fallback": true,
+      "run_at": "document_start"
+    }
+  ]
 }

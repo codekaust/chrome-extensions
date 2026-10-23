@@ -168,3 +168,11 @@ Lucide-style line icons, `stroke-width: 2`, `currentColor`, 18px in controls /
 - ❌ No second accent hue, no colored body text for emphasis.
 - ❌ No heavy shadows, gradients outside the brand, or ad-hoc radii.
 - ❌ Never restyle by editing JS-facing IDs/class contracts.
+
+### Browsing / playback measures
+
+Stats offer a clearly labeled select for **Active browsing** or **Media playback**.
+Both period totals remain visible in the options summary; graphs, weekday
+averages and site/day details use the selected measure. Playback and browsing
+may overlap and must never be summed as screen time. The popup shows both today
+values beside its measure selector and uses the existing indigo chart style.

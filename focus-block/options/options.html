@@ -23,16 +23,20 @@
   <main class="wrap">
     <section id="view-stats" class="view">
       <div class="dashboard-heading"><div><p class="eyebrow">YOUR BROWSING, IN PERSPECTIVE</p><h1>Usage history</h1></div><button id="refreshStats" class="btn btn-soft">Refresh</button></div>
-      <p class="muted">Explore your active browsing time, from a single day to every saved record.</p>
+      <p class="muted">Explore focused browsing and media playback, from a single day to every saved record.</p>
+      <p class="muted small">Media playback includes background video and audio on websites, independent of window focus or keyboard activity. It can overlap browsing, so these totals must not be added together as screen time. Simultaneous players on the same site count once; different sites can overlap. Embedded media is attributed to the website you opened.</p>
+      <p class="muted small">Playback history starts with version 1.2. Browser audio detection supplements video/audio players and may include a brief tail after sound stops. Browser-restricted pages and inaccessible silent players cannot be measured.</p>
       <p id="historyCoverage" class="muted small"></p>
       <p class="muted small">Older versions retained about 30 days. Previously deleted records cannot be recovered. History now stays on this device until you clear it. Days without records mean no recorded activity, not necessarily no browsing. Hourly activity and past focus sessions were not recorded.</p>
       <p id="historyStatus" class="msg" role="status"></p>
       <div class="history-filters">
+        <label>Measure<select id="historyMetric" class="input"><option value="browsing">Active browsing</option><option value="media">Media playback</option></select></label>
         <label>Period<select id="historyRange" class="input"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all" selected>All history</option><option value="custom">Custom dates</option></select></label>
         <label>From<input id="historyStart" class="input" type="date" /></label>
         <label>To<input id="historyEnd" class="input" type="date" /></label>
       </div>
       <div id="historySummary" class="history-summary" aria-live="polite"></div>
+      <p id="historyPeriodSummary" class="muted small"></p>
       <div class="insight-card">
         <div class="dashboard-heading"><h2>Activity over time</h2><label>Group by <select id="historyGrouping" class="input select"><option value="day">Day</option><option value="month">Month</option></select></label></div>
         <p class="muted small">Select a day to see every site below. Select a month to explore its daily activity. Scroll the chart for longer periods.</p>
@@ -40,14 +44,14 @@
       </div>
       <div class="insight-card"><h2>Average activity by weekday</h2><p class="muted small">Average per calendar day in the selected period, including days with no records.</p><div id="weekdayChart" class="weekday-chart"></div></div>
       <div class="insight-card">
-        <h2>Sites in this period</h2><p class="muted small">Every recorded site, ranked by total active time. Bars show each site's share of the period.</p>
+        <h2>Sites in this period</h2><p class="muted small">Every recorded site, ranked by time for the selected measure. Bars show each site's share of the period.</p>
         <label class="search-label">Find a site<input id="historySearch" type="search" class="input" placeholder="Search domains…" /></label>
-        <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Active time</th><th>Share</th><th>Active days</th></tr></thead><tbody id="historySites"></tbody></table></div>
+        <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Recorded time</th><th>Share</th><th>Active days</th></tr></thead><tbody id="historySites"></tbody></table></div>
       </div>
       <div class="insight-card" id="dayDetails">
         <div class="dashboard-heading"><h2>Daily details</h2><label>Day <input id="historyDay" type="date" class="input" /></label></div>
         <p id="historyDaySummary" class="muted" aria-live="polite"></p>
-        <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Active time</th><th>Share of day</th></tr></thead><tbody id="historyDaySites"></tbody></table></div>
+        <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Recorded time</th><th>Share of day</th></tr></thead><tbody id="historyDaySites"></tbody></table></div>
       </div>
     </section>
     <!-- GENERAL -->
@@ -67,14 +71,14 @@
           <input type="checkbox" class="toggle" data-setting="notifyCycle" />
         </label>
         <label class="row">
-          <span>Track my active time per site (shown in the Stats tab)</span>
+          <span>Track active browsing and media playback per site</span>
           <input type="checkbox" class="toggle" data-setting="trackUsage" />
         </label>
       </div>
 
       <h2 class="mt">Usage Data</h2>
       <p class="muted">
-        Time is tracked only while a tab is focused and you’re active. Everything
+        Browsing time follows your focused tab while you’re active. Media playback is tracked independently, including background tabs. Everything
         stays on this device — nothing is uploaded.
       </p>
       <button id="clearStats" class="btn btn-soft">Clear all usage history</button>

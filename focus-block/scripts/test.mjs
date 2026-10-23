@@ -12,6 +12,8 @@ const notifications = [];
 // controllable "browser state" for usage-tracking tests
 let mockWin = { id: 1, focused: true };
 let mockTabs = { 1: [{ active: true, url: 'https://example.com/x' }] };
+let mockAudibleTabs = [];
+let removedHandler = null;
 let mockIdle = 'active';
 let mockAllTabs = [];        // returned for url-pattern queries (enforceOpenTabs)
 let updatedTabs = [];        // { id, url } passed to chrome.tabs.update
@@ -48,7 +50,8 @@ globalThis.chrome = {
   },
   notifications: { create(_id, opts) { notifications.push(opts ?? _id); } },
   tabs: {
-    async query({ windowId, url } = {}) {
+    async query({ windowId, url, audible } = {}) {
+      if (audible) return mockAudibleTabs;
       if (url) return mockAllTabs;            // url-pattern query → enforceOpenTabs
       return mockTabs[windowId] || [];
     },
@@ -57,6 +60,7 @@ globalThis.chrome = {
       if (!tabById[id]) throw new Error('No tab');
       return tabById[id];
     },
+    onRemoved: { addListener(fn) { removedHandler = fn; } },
     onActivated: { addListener() {} },
     onUpdated: { addListener(fn) { updatedHandler = fn; } },
   },
@@ -70,7 +74,7 @@ globalThis.chrome = {
     onStateChanged: { addListener() {} },
   },
   runtime: {
-    getURL: (p) => p,
+    getURL: (p) => `chrome-extension://test/${p}`,
     onMessage: { addListener(fn) { msgHandler = fn; } },
     onInstalled: { addListener() {} },
     onStartup: { addListener() {} },
@@ -80,9 +84,9 @@ globalThis.chrome = {
 const { matchBlocked, blockPageUrl, GRACE_MS } = await import('../src/background.js');
 
 // dispatch a message and await sendResponse
-function dispatch(msg) {
+function dispatch(msg, sender = {}) {
   return new Promise((resolve) => {
-    msgHandler(msg, {}, resolve);
+    msgHandler(msg, sender, resolve);
   });
 }
 
@@ -193,6 +197,64 @@ await dispatch({ type: 'setSetting', key: 'trackUsage', value: true });
 await dispatch({ type: 'clearStats' });
 s = (await dispatch({ type: 'getStats' })).stats;
 assert(s.todayTotal === 0 || s.today.length === 0, 'clearStats wipes usage history');
+
+// --- media playback across all sites, independent of active browsing ---
+console.log('media playback');
+const mediaNow = Date.now;
+let mediaClock = new Date(2026, 9, 23, 12).getTime();
+Date.now = () => mediaClock;
+store.mediaCutoff = 0;
+mockIdle = 'idle'; mockWin = { id: 1, focused: false };
+for (const [index, host] of ['primevideo.com', 'youtube.com', 'music.youtube.com', 'arbitrary.example'].entries()) {
+  const id = 200 + index;
+  tabById[id] = { id, url: `https://${host}/watch` };
+  const result = await dispatch({ type: 'mediaProgress', intervals: [[mediaClock-10000, mediaClock]] },
+    { tab: tabById[id], frameId: 3, url: 'https://embedded.example/player' });
+  assert(result.ok && store.mediaUsage['2026-10-23'][host] === 10, `${host} media counts while idle and browser unfocused`);
+}
+let mediaStats = (await dispatch({type: 'getStats', includeHistory: true})).stats;
+assert(mediaStats.todayTotal === 0 && mediaStats.media.todayTotal === 40, 'playback is separate from browsing in stats');
+assert(mediaStats.mediaUsage['2026-10-23']['primevideo.com'] === 10, 'history API includes playback records');
+await Promise.all([1,2,3].map(() => dispatch({type: 'mediaProgress', intervals: [[mediaClock-10000,mediaClock]]}, {tab: tabById[200]})));
+assert(store.mediaUsage['2026-10-23']['primevideo.com'] === 10, 'concurrent duplicate reports do not double count');
+const badSender = await dispatch({type: 'mediaProgress', intervals: [[mediaClock-10000,mediaClock]]});
+assert(!badSender.ok, 'media reports require a live browser tab');
+const pageRead = await dispatch({type:'getState'}, {tab:tabById[200],url:'https://primevideo.com/watch'});
+assert(!pageRead.ok, 'content-script senders cannot read private history or settings');
+const pageWrite = await dispatch({type:'clearStats'}, {tab:tabById[200],url:'https://primevideo.com/watch'});
+assert(!pageWrite.ok && store.mediaUsage['2026-10-23']['primevideo.com'] === 10, 'content-script senders cannot clear history');
+
+const changedTab = await dispatch({type: 'mediaProgress', intervals: [[mediaClock-10000,mediaClock]]}, {tab: {id:200,url:'https://old.example'}});
+assert(!changedTab.ok, 'old-page reports cannot be credited to a different navigated site');
+
+// Browser audio fallback also works without a content-script player (Web Audio).
+mockAudibleTabs = [{id:210, url:'https://audio.example', audible:true}];
+await updatedHandler(210, {audible:true}, mockAudibleTabs[0]);
+mediaClock += 10000;
+await dispatch({type:'getStats'});
+assert(store.mediaUsage['2026-10-23']['audio.example'] === 10, 'browser audio fallback counts background sound');
+mockAudibleTabs = [];
+await removedHandler(210);
+mediaClock += 10000;
+await dispatch({type:'getStats'});
+assert(store.mediaUsage['2026-10-23']['audio.example'] === 10, 'closed or silent tabs stop fallback tracking');
+
+await dispatch({type:'setSetting',key:'trackUsage',value:false});
+mediaClock += 10000;
+await dispatch({type:'mediaProgress',intervals:[[mediaClock-10000,mediaClock]]},{tab:tabById[200]});
+assert(store.mediaUsage['2026-10-23']['primevideo.com'] === 10, 'disabling tracking stops playback collection');
+await dispatch({type:'setSetting',key:'trackUsage',value:true});
+await dispatch({type:'mediaProgress',intervals:[[mediaClock-10000,mediaClock]]},{tab:tabById[200]});
+assert(store.mediaUsage['2026-10-23']['primevideo.com'] === 10, 're-enabling cannot backfill the disabled interval');
+await dispatch({type:'clearStats'});
+await dispatch({type:'mediaProgress',intervals:[[mediaClock-10000,mediaClock]]},{tab:tabById[200]});
+assert(Object.keys(store.mediaUsage).length === 0, 'clear history removes media and rejects late pre-clear reports');
+mediaClock += 5000;
+await dispatch({type:'mediaProgress',intervals:[[mediaClock-5000,mediaClock]]},{tab:tabById[200]});
+assert(store.mediaUsage['2026-10-23']['primevideo.com'] === 5, 'new playback is tracked after clearing history');
+Date.now = mediaNow;
+mockIdle = 'active'; mockWin = {id:1, focused:true};
+store.session = null;
 
 // --- two block modes ---
 console.log('block modes (always vs during-focus)');
