@@ -116,13 +116,15 @@
     </div>
 
     <div class="list-block">
-      <div class="list-head">Today’s top sites</div>
+      <div class="list-head" id="selectedDayTitle">Today’s top sites</div>
+      <p id="selectedDayTotal" class="muted small" aria-live="polite"></p>
       <ul id="topSites" class="top-sites"></ul>
-      <p id="statsEmpty" class="stats-empty hidden">No activity tracked yet today.</p>
+      <p id="statsEmpty" class="stats-empty hidden">No activity recorded for this day.</p>
       <p id="statsDisabled" class="stats-empty hidden">
         Usage tracking is turned off. Enable it in Settings.
       </p>
     </div>
+    <button id="openStats" class="btn btn-soft">Explore full usage history →</button>
   </section>
 
   <div id="pwdModal" class="modal hidden">
@@ -138,6 +140,6 @@
     </div>
   </div>
 
-  <script src="popup.js"></script>
+  <script type="module" src="popup.js"></script>
 </body>
 </html>

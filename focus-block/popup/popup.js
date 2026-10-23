@@ -1,3 +1,4 @@
+import { fmtDuration, dateLabel } from '../src/stats.js';
 const send = (msg) => chrome.runtime.sendMessage(msg);
 
 let currentHost = null;   // normalized domain of active tab
@@ -253,14 +254,8 @@ function renderFocusTab() {
 }
 
 // ---------- stats tab ----------
-function fmtDuration(seconds) {
-  const s = Math.round(seconds);
-  if (s < 60) return s <= 0 ? '0m' : '<1m';
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  if (h > 0) return m ? `${h}h ${m}m` : `${h}h`;
-  return `${m}m`;
-}
+let selectedStatsDay = null;
+let statsCache = null;
 
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function dayLabel(key) {
@@ -274,7 +269,14 @@ async function loadStats() {
 
   const res = await send({ type: 'getStats' });
   if (!res?.ok) return;
-  const { today, todayTotal, weekTotal, days } = res.stats;
+  statsCache = res.stats;
+  renderStats();
+}
+
+function renderStats() {
+  const { todayKey, todayTotal, weekTotal, days } = statsCache;
+  if (!days.some(d => d.key === selectedStatsDay)) selectedStatsDay = todayKey;
+  const selected = days.find(d => d.key === selectedStatsDay);
 
   document.getElementById('todayTotal').textContent = fmtDuration(todayTotal);
   document.getElementById('weekTotal').textContent = fmtDuration(weekTotal);
@@ -284,14 +286,18 @@ async function loadStats() {
   chart.innerHTML = '';
   const max = Math.max(1, ...days.map((d) => d.total));
   days.forEach((d, i) => {
-    const col = document.createElement('div');
+    const col = document.createElement('button');
+    col.type = 'button';
     col.className = 'bar-col';
+    col.setAttribute('aria-pressed', String(d.key === selectedStatsDay));
+    col.setAttribute('aria-label', `${dateLabel(d.key)}: ${fmtDuration(d.total)}`);
+    col.addEventListener('click', () => { selectedStatsDay = d.key; renderStats(); chart.children[i].focus(); });
     const barWrap = document.createElement('div');
     barWrap.className = 'bar-wrap';
     const bar = document.createElement('div');
     bar.className = 'bar';
     bar.style.height = `${Math.max(3, (d.total / max) * 100)}%`;
-    if (i === days.length - 1) bar.classList.add('bar-today');
+    if (d.key === selectedStatsDay) bar.classList.add('bar-today');
     bar.title = fmtDuration(d.total);
     barWrap.appendChild(bar);
     const lbl = document.createElement('div');
@@ -301,11 +307,13 @@ async function loadStats() {
     chart.appendChild(col);
   });
 
-  // today's top sites
+  document.getElementById('selectedDayTitle').textContent = selectedStatsDay === todayKey ? 'Today’s top sites' : `${dateLabel(selectedStatsDay)} · Top sites`;
+  document.getElementById('selectedDayTotal').textContent = `${fmtDuration(selected.total)} active · ${selected.sites.length} sites`;
+  // Selected day's sites
   const list = document.getElementById('topSites');
   list.innerHTML = '';
-  const top = today.slice(0, 8);
-  document.getElementById('statsEmpty').classList.toggle('hidden', top.length > 0 || !trackingOn);
+  const top = selected.sites.slice(0, 8);
+  document.getElementById('statsEmpty').classList.toggle('hidden', top.length > 0);
   const maxSite = Math.max(1, ...top.map((s) => s.seconds));
   for (const s of top) {
     const li = document.createElement('li');
@@ -334,6 +342,10 @@ async function loadStats() {
     list.appendChild(li);
   }
 }
+
+document.getElementById('openStats').addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#stats') });
+});
 
 // ---------- password modal ----------
 let pwdCallback = null;

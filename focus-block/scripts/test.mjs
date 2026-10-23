@@ -156,6 +156,21 @@ assert(exToday && exToday.seconds >= 5, 'active time is credited to the domain')
 assert(s.days.length === 7, 'stats return a 7-day series');
 assert(s.todayTotal >= 5, 'today total reflects tracked time');
 
+// Retention and daily attribution at midnight.
+const originalNow = Date.now;
+const midnight = new Date(2026, 9, 23, 0, 0, 5).getTime();
+Date.now = () => midnight;
+store.usage = { '2020-01-01': { 'archive.com': 300 } };
+store.session = { domain: 'midnight.com', since: midnight - 10000 };
+const history = (await dispatch({ type: 'getStats', includeHistory: true })).stats;
+assert(history.usage['2020-01-01']['archive.com'] === 300, 'history older than 30 days survives tracking flush');
+assert(history.usage['2026-10-22']['midnight.com'] === 5, 'pre-midnight time belongs to the previous day');
+assert(history.usage['2026-10-23']['midnight.com'] === 5, 'post-midnight time belongs to today');
+assert(history.days[5].sites[0].domain === 'midnight.com', 'popup carries previous-day site details');
+Date.now = originalNow;
+store.session = null;
+assert(!(await dispatch({ type: 'getStats' })).stats.usage, 'popup does not transfer the full history');
+
 // idle → no tracking
 mockIdle = 'idle';
 await dispatch({ type: 'getStats' });

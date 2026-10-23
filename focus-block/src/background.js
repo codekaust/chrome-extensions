@@ -1,3 +1,5 @@
+import { dayKey, buildStats } from './stats.js';
+
 // FocusBlock service worker — owns all state, blocking, timers & notifications.
 
 const DEFAULTS = {
@@ -21,7 +23,6 @@ const DEFAULTS = {
 
 const IDLE_THRESHOLD = 30;   // seconds of no input before we stop counting
 const MAX_TICK = 130;        // ignore deltas larger than this (sleep/suspend gaps)
-const RETAIN_DAYS = 30;      // keep this many days of usage history
 
 // ---------- storage helpers ----------
 async function getState() {
@@ -53,14 +54,6 @@ function now() {
 }
 
 // ---------- usage tracking ----------
-function dayKey(ts) {
-  const d = new Date(ts);
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${y}-${m}-${day}`;
-}
-
 // What domain (if any) is the user *actively* viewing right now?
 // Active := a focused browser window, an http(s) tab, and non-idle input.
 async function computeActiveDomain() {
@@ -86,20 +79,19 @@ async function flushUsage(t) {
   const elapsed = (t - state.session.since) / 1000;
   const usage = { ...state.usage };
   if (elapsed > 0 && elapsed <= MAX_TICK) {
-    const day = dayKey(t);
-    usage[day] = { ...(usage[day] || {}) };
-    usage[day][state.session.domain] =
-      (usage[day][state.session.domain] || 0) + elapsed;
+    let cursor = state.session.since;
+    while (cursor < t) {
+      const midnight = new Date(cursor);
+      midnight.setHours(24, 0, 0, 0);
+      const end = Math.min(t, midnight.getTime());
+      const day = dayKey(cursor);
+      usage[day] = { ...(usage[day] || {}) };
+      usage[day][state.session.domain] =
+        (usage[day][state.session.domain] || 0) + (end - cursor) / 1000;
+      cursor = end;
+    }
   }
-  pruneUsage(usage, t);
   await setState({ usage, session: { domain: state.session.domain, since: t } });
-}
-
-function pruneUsage(usage, t) {
-  const cutoff = dayKey(t - RETAIN_DAYS * 86_400_000);
-  for (const day of Object.keys(usage)) {
-    if (day < cutoff) delete usage[day];
-  }
 }
 
 // Flush, then re-evaluate what we should be tracking.
@@ -108,27 +100,6 @@ async function updateSession() {
   await flushUsage(t);
   const domain = await computeActiveDomain();
   await setState({ session: domain ? { domain, since: t } : null });
-}
-
-function buildStats(state, t) {
-  const today = dayKey(t);
-  const todayMap = state.usage[today] || {};
-  const todayList = Object.entries(todayMap)
-    .map(([domain, seconds]) => ({ domain, seconds: Math.round(seconds) }))
-    .sort((a, b) => b.seconds - a.seconds);
-  const todayTotal = todayList.reduce((a, b) => a + b.seconds, 0);
-
-  // last 7 days (oldest → newest) for the bar chart
-  const days = [];
-  let weekTotal = 0;
-  for (let i = 6; i >= 0; i--) {
-    const key = dayKey(t - i * 86_400_000);
-    const map = state.usage[key] || {};
-    const total = Math.round(Object.values(map).reduce((a, b) => a + b, 0));
-    days.push({ key, total });
-    weekTotal += total;
-  }
-  return { today: todayList, todayTotal, weekTotal, days };
 }
 
 // ---------- rule computation ----------
@@ -428,7 +399,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case 'getStats': {
         await updateSession(); // count the in-progress session up to now
         const fresh = await getState();
-        sendResponse({ ok: true, stats: buildStats(fresh, now()) });
+        const stats = buildStats(fresh, now());
+        if (msg.includeHistory) {
+          stats.usage = fresh.usage;
+          stats.trackingOn = fresh.settings.trackUsage;
+        }
+        sendResponse({ ok: true, stats });
         break;
       }
       case 'clearStats': {

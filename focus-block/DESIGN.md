@@ -85,7 +85,7 @@ progress fills): `linear-gradient(135deg, #6366F1, #4F46E5)`.
   is the same tall rectangle (switching tabs never resizes the window, and Stats
   gets room). Sticky header (logo + settings), segmented underline tabs, then a
   `16px` padded panel. Primary actions on the Block/Focus tabs pin to the bottom.
-- **Options:** centered column `max-width: 760px`, `bg` backdrop, sticky top bar
+- **Options:** centered dashboard `max-width: 1120px` (settings sections stay at 712px), `bg` backdrop, sticky top bar
   with pill nav. Content grouped into titled sections with cards.
 - **Block page:** centered card (`max-width: 460px`, `--shadow-2`) on a soft
   brand-tinted backdrop.
@@ -130,7 +130,8 @@ Brand gradient, white, radius `xl`, `--shadow-brand`. Big `24/800` value +
 
 ### Bar chart `.week-chart`
 Flex, bottom-aligned, 96px tall. Bars radius `6 6 3 3`, neutral `--brand-100`;
-the latest day uses the brand gradient. Micro day labels beneath.
+the selected day uses the brand gradient. Day bars are keyboard-accessible buttons.
+The full-page history chart scrolls horizontally and supports daily/monthly grouping. Micro day labels beneath.
 
 ### Progress list (top sites) `.top-sites`
 Favicon (22px) + name/time row + a 7px `--brand-100` track with brand-gradient

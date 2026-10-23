@@ -4,24 +4,54 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="../styles/app.css" />
-  <title>FocusBlock Settings</title>
+  <title>FocusBlock</title>
 </head>
 <body class="fb-options">
   <header class="topbar">
     <div class="brand">
       <img src="../icons/icon48.png" alt="" class="brand-icon" />
-      <span class="brand-name">FocusBlock Settings</span>
+      <span class="brand-name">FocusBlock</span>
     </div>
     <nav class="nav">
-      <button class="nav-btn active" data-view="general">General</button>
+      <button class="nav-btn active" data-view="stats">Stats</button>
+      <button class="nav-btn" data-view="general">General</button>
       <button class="nav-btn" data-view="block">Block Sites</button>
       <button class="nav-btn" data-view="focus">Focus Mode</button>
     </nav>
   </header>
 
   <main class="wrap">
+    <section id="view-stats" class="view">
+      <div class="dashboard-heading"><div><p class="eyebrow">YOUR BROWSING, IN PERSPECTIVE</p><h1>Usage history</h1></div><button id="refreshStats" class="btn btn-soft">Refresh</button></div>
+      <p class="muted">Explore your active browsing time, from a single day to every saved record.</p>
+      <p id="historyCoverage" class="muted small"></p>
+      <p class="muted small">Older versions retained about 30 days. Previously deleted records cannot be recovered. History now stays on this device until you clear it. Days without records mean no recorded activity, not necessarily no browsing. Hourly activity and past focus sessions were not recorded.</p>
+      <p id="historyStatus" class="msg" role="status"></p>
+      <div class="history-filters">
+        <label>Period<select id="historyRange" class="input"><option value="7">Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="all" selected>All history</option><option value="custom">Custom dates</option></select></label>
+        <label>From<input id="historyStart" class="input" type="date" /></label>
+        <label>To<input id="historyEnd" class="input" type="date" /></label>
+      </div>
+      <div id="historySummary" class="history-summary" aria-live="polite"></div>
+      <div class="insight-card">
+        <div class="dashboard-heading"><h2>Activity over time</h2><label>Group by <select id="historyGrouping" class="input select"><option value="day">Day</option><option value="month">Month</option></select></label></div>
+        <p class="muted small">Select a day to see every site below. Select a month to explore its daily activity. Scroll the chart for longer periods.</p>
+        <div class="chart-scroll"><div id="historyChart" class="history-chart"></div></div>
+      </div>
+      <div class="insight-card"><h2>Average activity by weekday</h2><p class="muted small">Average per calendar day in the selected period, including days with no records.</p><div id="weekdayChart" class="weekday-chart"></div></div>
+      <div class="insight-card">
+        <h2>Sites in this period</h2><p class="muted small">Every recorded site, ranked by total active time. Bars show each site's share of the period.</p>
+        <label class="search-label">Find a site<input id="historySearch" type="search" class="input" placeholder="Search domains…" /></label>
+        <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Active time</th><th>Share</th><th>Active days</th></tr></thead><tbody id="historySites"></tbody></table></div>
+      </div>
+      <div class="insight-card" id="dayDetails">
+        <div class="dashboard-heading"><h2>Daily details</h2><label>Day <input id="historyDay" type="date" class="input" /></label></div>
+        <p id="historyDaySummary" class="muted" aria-live="polite"></p>
+        <div class="table-scroll"><table class="history-table"><thead><tr><th>Site</th><th>Active time</th><th>Share of day</th></tr></thead><tbody id="historyDaySites"></tbody></table></div>
+      </div>
+    </section>
     <!-- GENERAL -->
-    <section id="view-general" class="view">
+    <section id="view-general" class="view hidden">
       <h2>General Settings</h2>
       <div class="rows">
         <label class="row">
@@ -123,6 +153,6 @@
     </div>
   </div>
 
-  <script src="options.js"></script>
+  <script type="module" src="options.js"></script>
 </body>
 </html>

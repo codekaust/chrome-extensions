@@ -33,8 +33,11 @@ ever leaving your machine.
   countdown shows in the popup, with an optional notification when you finish.
 - **Usage insights** — a **Stats** tab tracks your *active* time per site
   (only while the tab is focused and you're actually at the keyboard). See
-  today's total, a 7-day bar chart, and your top sites with visual bars — so
-  you can spot what's worth blocking. Tracking is on by default and can be
+  today's total and a clickable 7-day chart: choose any day to see its usage
+  and top sites. Open **Stats** in the full options page for all saved history,
+  date filters, daily/monthly charts, weekday averages, searchable site totals,
+  and complete daily details. New history is no longer pruned after 30 days;
+  records deleted by older versions cannot be recovered. Tracking is on by default and can be
   toggled or cleared in Settings.
 - **Password protection** — optionally require a password to unblock sites,
   edit your list, or end a focus session early, so it's harder to give in to
@@ -133,3 +136,7 @@ page, and block page stay perfectly consistent.
 FocusBlock collects nothing and sends nothing anywhere. The only outbound
 requests are favicon lookups (`google.com/s2/favicons`) used to show site icons
 in the UI. All of your data lives on your device.
+
+## Validation
+
+Run `node focus-block/scripts/test.mjs` and `node --test focus-block/scripts/stats.test.mjs` from the repository root. No compilation is required; reload the unpacked extension after updating.

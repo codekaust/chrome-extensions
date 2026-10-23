@@ -1,3 +1,4 @@
+import { refreshStats } from './stats.js';
 const send = (msg) => chrome.runtime.sendMessage(msg);
 let state = null;
 
@@ -15,6 +16,8 @@ document.querySelectorAll('.nav-btn').forEach((btn) => {
     document.querySelectorAll('.nav-btn').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     const view = btn.dataset.view;
+    location.hash = view;
+    if (view === 'stats') refreshStats();
     document.querySelectorAll('.view').forEach((v) => v.classList.add('hidden'));
     document.getElementById(`view-${view}`).classList.remove('hidden');
   });
@@ -91,6 +94,7 @@ document.getElementById('clearStats').addEventListener('click', async () => {
     'Enter your password to clear your usage history.'
   );
   if (res?.ok) {
+    await refreshStats();
     msg.textContent = 'Usage history cleared.';
     msg.className = 'msg ok';
     msg.classList.remove('hidden');
@@ -192,3 +196,6 @@ async function refresh() {
 }
 
 refresh();
+
+const initialView = ['general', 'block', 'focus', 'stats'].includes(location.hash.slice(1)) ? location.hash.slice(1) : 'stats';
+document.querySelector(`[data-view="${initialView}"]`).click();
