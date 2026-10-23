@@ -186,3 +186,9 @@ Categorical colors (`--pie-1` through `--pie-7`, plus `--pie-others`) are a scop
 exception to the single-accent rule. Every slice has a text label, tooltip, and
 keyboard focus treatment; colors alone never carry the data. Empty data shows
 an empty state, and a single site renders a full circle. The chart denominator includes every recorded site in the selected period.
+
+The Others slice and legend entry toggle an inline, initially collapsed breakdown.
+Its scrollable list contains only the grouped sites, ranked by usage, with time
+and percentage of the full chart. Native legend buttons and SVG button semantics
+support keyboard activation and expose expanded state. Automatic chart updates
+preserve the expanded state and list scroll position.

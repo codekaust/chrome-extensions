@@ -423,3 +423,15 @@ button.bar-col:focus-visible { outline: 2px solid var(--brand); outline-offset: 
   .usage-pie-figure { flex-basis: auto; width: min(260px, 100%); }
   .usage-pie-legend { width: 100%; }
 }
+.usage-pie-details { flex: 1; min-width: 0; }
+.usage-pie-legend li.usage-pie-others { padding: 0; }
+.usage-pie-toggle { display: flex; align-items: center; gap: var(--s2); width: 100%; border: 0; border-radius: var(--r-sm); padding: var(--s2); background: var(--surface-2); color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.usage-pie-toggle:hover { background: var(--brand-50); }
+.usage-pie-toggle:focus-visible, .usage-pie-other-sites:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.usage-pie-others-slice { cursor: pointer; }
+.usage-pie-chevron { color: var(--text-2); }
+.usage-pie-breakdown { margin-top: var(--s3); padding: var(--s3); border: 1px solid var(--border); border-radius: var(--r-md); }
+.usage-pie-other-sites { list-style: none; padding: 0; margin: 0; max-height: 320px; overflow-y: auto; }
+.usage-pie-other-sites li { display: flex; align-items: center; gap: var(--s3); padding: var(--s2) 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+.usage-pie-other-sites li:last-child { border-bottom: 0; }
+@media (max-width: 760px) { .usage-pie-details { width: 100%; } }
