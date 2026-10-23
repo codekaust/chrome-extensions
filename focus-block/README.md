@@ -39,13 +39,11 @@ ever leaving your machine.
   and complete daily details. New history is no longer pruned after 30 days;
   records deleted by older versions cannot be recovered. Tracking is on by default and can be
   toggled or cleared in Settings.
-- **Background media playback** — tracks video and audio separately from active
-  browsing across HTTP(S) websites, including Prime Video, YouTube, YouTube Music,
-  and embedded players. Playback continues counting when you work in another
-  tab, window, or desktop app. Switch **Show → Media playback** in the popup or
-  **Measure → Media playback** in the full dashboard for its daily history,
-  graphs, and per-site totals. Browsing and playback overlap and are never
-  combined into a misleading screen-time total.
+- **Combined usage** — focused browsing and background video/audio appear in
+  one Stats view across HTTP(S) websites, including Prime Video, YouTube,
+  YouTube Music, and embedded players. Overlapping activity on the same site
+  counts once from version 1.3 onward. Existing daily totals are preserved by
+  addition; historical overlap cannot be recovered and is flagged in the dashboard.
 - **Password protection** — optionally require a password to unblock sites,
   edit your list, or end a focus session early, so it's harder to give in to
   impulse.
@@ -158,8 +156,8 @@ Run `node focus-block/scripts/test.mjs` and `node --test focus-block/scripts/*.t
   Browser audio detection supplements players using Web Audio or inaccessible DOM;
   its speaker indicator can linger for a couple of seconds after sound stops.
 - Embedded players count under the host website. `www.youtube.com` is grouped
-  with `youtube.com`; `music.youtube.com` remains separate. Overlapping players
-  on the same domain count once. Simultaneous playback on different sites counts
+  with `youtube.com`; `music.youtube.com` remains separate. Overlapping browsing
+  and players on the same domain count once. Simultaneous playback on different sites counts
   for each site, so even the playback total is not unique elapsed screen time.
 - Paused/ended HTML players do not add time. Seeking and playback speed do not
   inflate duration. Long gaps after sleep are discarded, and midnight intervals
@@ -179,4 +177,4 @@ then run `node focus-block/scripts/media-browser.mjs`. Set `PLAYWRIGHT_MODULE`
 to its module path and `BROWSER_EXECUTABLE` to a Chromium browser executable if
 using an existing installation. This creates and removes an isolated profile;
 uses generated audio and fixture websites; and checks background, muted, embedded,
-paused, disabled, and cleared playback plus the popup and full-page statistics.
+paused, disabled, and cleared playback plus the merged popup and full-page statistics.

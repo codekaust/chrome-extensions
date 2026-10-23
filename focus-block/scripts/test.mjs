@@ -5,7 +5,8 @@
 let alarmHandler = null;
 let msgHandler = null;
 let updatedHandler = null;
-const store = {};
+let installedHandler = null;
+const store = { usage: {'2020-01-01': {'legacy.example': 60}}, mediaUsage: {'2020-01-01': {'legacy.example': 90}} };
 let badgeText = '';
 const notifications = [];
 
@@ -76,7 +77,7 @@ globalThis.chrome = {
   runtime: {
     getURL: (p) => `chrome-extension://test/${p}`,
     onMessage: { addListener(fn) { msgHandler = fn; } },
-    onInstalled: { addListener() {} },
+    onInstalled: { addListener(fn) { installedHandler = fn; } },
     onStartup: { addListener() {} },
   },
 };
@@ -104,6 +105,11 @@ console.log('\nFocusBlock logic tests\n');
 // --- block ---
 console.log('block / unblock');
 await dispatch({ type: 'blockSite', domain: 'https://www.youtube.com/watch?x=1' });
+assert(store.combinedUsage['2020-01-01']['legacy.example'] === 150, 'upgrade preserves both historical totals');
+assert(store.legacyCombined === true, 'legacy overlap limitation is recorded');
+await installedHandler();
+assert(store.combinedUsage['2020-01-01']['legacy.example'] === 150, 'repeated bootstrap does not add historical totals again');
+
 await dispatch({ type: 'blockSite', domain: 'reddit.com' });
 assert(store.blockedSites.join(',') === 'youtube.com,reddit.com', 'normalizes + stores two domains');
 assert(JSON.stringify(blockedDomains()) === '["reddit.com","youtube.com"]', 'both domains are enforced');
@@ -255,6 +261,27 @@ assert(store.mediaUsage['2026-10-23']['primevideo.com'] === 5, 'new playback is 
 Date.now = mediaNow;
 mockIdle = 'active'; mockWin = {id:1, focused:true};
 store.session = null;
+
+// Combined browsing + playback shares one interval ledger.
+console.log('merged usage');
+Date.now = () => mediaClock;
+await dispatch({type:'clearStats'});
+store.combinedSince = 0;
+mockIdle = 'active'; mockWin = {id:1,focused:true};
+mockTabs = {1:[{active:true,url:'https://primevideo.com/watch'}]};
+store.session = {domain:'primevideo.com',since:mediaClock};
+mediaClock += 10000;
+await dispatch({type:'mediaProgress',intervals:[[mediaClock-10000,mediaClock]]},{tab:tabById[200]});
+const merged = (await dispatch({type:'getStats',includeHistory:true})).stats;
+assert(merged.combined.todayTotal === 10, 'focused playback counts once in combined stats');
+assert(merged.combinedUsage['2026-10-23']['primevideo.com'] === 10, 'full history uses the same merged total');
+await dispatch({type:'clearStats'});
+assert(Object.keys(store.combinedUsage).length === 0, 'clear history wipes combined data');
+await dispatch({type:'mediaProgress',intervals:[[mediaClock-10000,mediaClock]]},{tab:tabById[200]});
+assert(Object.keys(store.combinedUsage).length === 0, 'late reports cannot revive cleared combined data');
+Date.now = mediaNow;
+store.session = null;
+mockTabs = {1:[{active:true,url:'https://example.com/watch'}]};
 
 // --- two block modes ---
 console.log('block modes (always vs during-focus)');

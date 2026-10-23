@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { creditMedia } from '../src/media.js';
+import { creditMedia, creditCombined } from '../src/media.js';
 import { buildStats } from '../src/stats.js';
 
 const now = new Date(2026, 9, 23, 12).getTime();
@@ -45,4 +45,23 @@ test('stats expose independent playback series and preserve existing browsing hi
   assert.equal(stats.media.weekTotal, 150);
   assert.equal(stats.media.days[5].sites[0].domain, 'music.youtube.com');
   assert.equal(buildStats({usage:{}}, now).media.weekTotal, 0);
+});
+
+test('combined usage deduplicates browsing and playback in either arrival order', () => {
+  for (const intervals of [
+    [[now-20000, now-5000], [now-15000, now]],
+    [[now-15000, now], [now-20000, now-5000]],
+  ]) {
+    let state = {};
+    for (const interval of intervals) state = { ...state, ...creditCombined(state, 'youtube.com', [interval], now) };
+    assert.equal(state.combinedUsage['2026-10-23']['youtube.com'], 20);
+    state = { ...state, ...creditCombined(state, 'work.com', [[now-10000, now]], now) };
+    assert.equal(state.combinedUsage['2026-10-23']['work.com'], 10);
+    assert.equal(buildStats({ usage: {}, ...state }, now).combined.todayTotal, 30);
+  }
+});
+test('combined stats preserve legacy totals when exact historical overlap is unavailable', () => {
+  const stats = buildStats({usage:{'2026-10-23':{'youtube.com':60}},mediaUsage:{'2026-10-23':{'youtube.com':90}}},now);
+  assert.equal(stats.combined.todayTotal,150);
+  assert.equal(stats.combined.today.length,1);
 });

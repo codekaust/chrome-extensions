@@ -169,10 +169,10 @@ Lucide-style line icons, `stroke-width: 2`, `currentColor`, 18px in controls /
 - ❌ No heavy shadows, gradients outside the brand, or ad-hoc radii.
 - ❌ Never restyle by editing JS-facing IDs/class contracts.
 
-### Browsing / playback measures
+### Combined usage
 
-Stats offer a clearly labeled select for **Active browsing** or **Media playback**.
-Both period totals remain visible in the options summary; graphs, weekday
-averages and site/day details use the selected measure. Playback and browsing
-may overlap and must never be summed as screen time. The popup shows both today
-values beside its measure selector and uses the existing indigo chart style.
+Browsing and media playback share one Stats view without a measure selector.
+The popup shows total usage today and over seven days. Options shows total usage,
+daily average, unique sites and active days. Same-site overlapping intervals count
+once; concurrent activity on different sites still contributes to each site.
+Older daily totals are combined by addition with a visible overlap limitation.

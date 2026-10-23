@@ -41,6 +41,16 @@ export function summarize(usage, start, end) {
     activeDays: days.filter(d => d.total > 0).length,
   };
 }
+// Older versions retained daily totals, not the intervals needed to recover
+// overlap. Preserve those totals rather than guessing or discarding history.
+export function mergeHistory(browsing = {}, media = {}) {
+  const result = {};
+  for (const source of [browsing, media]) for (const [day, sites] of Object.entries(source)) {
+    result[day] ||= {};
+    for (const { domain, seconds } of sitesFor(sites)) result[day][domain] = (result[day][domain] || 0) + seconds;
+  }
+  return result;
+}
 export function buildStats(state, t) {
   const todayKey = dayKey(t);
   const week = summarize(state.usage, shiftDay(todayKey, -6), todayKey);
@@ -48,5 +58,8 @@ export function buildStats(state, t) {
   const mediaWeek = summarize(state.mediaUsage || {}, shiftDay(todayKey, -6), todayKey);
   const mediaToday = mediaWeek.days.at(-1);
   const media = { todayKey, today: mediaToday.sites, todayTotal: mediaToday.total, weekTotal: mediaWeek.total, days: mediaWeek.days };
-  return { media, todayKey, today: today.sites, todayTotal: today.total, weekTotal: week.total, days: week.days };
+  const combinedWeek = summarize(state.combinedUsage ?? mergeHistory(state.usage, state.mediaUsage), shiftDay(todayKey, -6), todayKey);
+  const combinedToday = combinedWeek.days.at(-1);
+  const combined = { todayKey, today: combinedToday.sites, todayTotal: combinedToday.total, weekTotal: combinedWeek.total, days: combinedWeek.days };
+  return { combined, media, todayKey, today: today.sites, todayTotal: today.total, weekTotal: week.total, days: week.days };
 }

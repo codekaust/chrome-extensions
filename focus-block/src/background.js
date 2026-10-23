@@ -1,5 +1,5 @@
-import { dayKey, buildStats } from './stats.js';
-import { creditMedia } from './media.js';
+import { dayKey, buildStats, mergeHistory } from './stats.js';
+import { creditMedia, creditCombined } from './media.js';
 
 // FocusBlock service worker — owns all state, blocking, timers & notifications.
 
@@ -18,6 +18,10 @@ const DEFAULTS = {
   },
   password: null,            // { hash } sha-256 hex, or null
   usage: {},                 // { "YYYY-MM-DD": { domain: seconds } }
+  combinedUsage: null,        // union of browsing and playback per site
+  combinedCoverage: {},
+  combinedSince: 0,
+  legacyCombined: false,
   mediaUsage: {},             // separate playback time; may overlap focused browsing
   mediaCoverage: {},          // recent credited intervals, deduplicated per domain
   mediaAudible: {},           // fallback sessions for tabs producing browser audio
@@ -58,6 +62,7 @@ async function updateMediaAudible() {
   const t = now();
   const state = await getState();
   if (!state.settings.trackUsage) return;
+  Object.assign(state, creditCombined(state, '', [], t));
   Object.assign(state, creditMedia(state, '', [], t)); // expire recent interval metadata
   const tabs = await chrome.tabs.query({ audible: true });
   const next = {};
@@ -68,8 +73,9 @@ async function updateMediaAudible() {
   }
   for (const session of Object.values(state.mediaAudible)) {
     Object.assign(state, creditMedia(state, session.domain, [[session.since, t]], t));
+    Object.assign(state, creditCombined(state, session.domain, [[session.since, t]], t));
   }
-  await setState({ mediaUsage: state.mediaUsage, mediaCoverage: state.mediaCoverage, mediaAudible: next });
+  await setState({ mediaUsage: state.mediaUsage, mediaCoverage: state.mediaCoverage, mediaAudible: next, combinedUsage: state.combinedUsage, combinedCoverage: state.combinedCoverage });
 }
 
 async function receiveMedia(msg, sender) {
@@ -83,7 +89,8 @@ async function receiveMedia(msg, sender) {
   if (!domain || domain !== normalizeDomain(sender.tab.url)) return { ok: false };
   const state = await getState();
   if (!state.settings.trackUsage) return { ok: true };
-  await setState(creditMedia(state, domain, msg.intervals, now()));
+  const t = now();
+  await setState({ ...creditMedia(state, domain, msg.intervals, t), ...creditCombined(state, domain, msg.intervals, t) });
   return { ok: true };
 }
 
@@ -140,7 +147,7 @@ async function flushUsage(t) {
       cursor = end;
     }
   }
-  await setState({ usage, session: { domain: state.session.domain, since: t } });
+  await setState({ usage, ...creditCombined(state, state.session.domain, [[state.session.since, t]], t), session: { domain: state.session.domain, since: t } });
 }
 
 // Flush, then re-evaluate what we should be tracking.
@@ -432,7 +439,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (msg.key === 'trackUsage') {
           await updateSession();
           await updateMediaAudible();
-          await setState({ session: null, mediaAudible: {}, mediaCoverage: {}, mediaCutoff: now() });
+          await setState({ session: null, mediaAudible: {}, mediaCoverage: {}, combinedCoverage: {}, mediaCutoff: now() });
         }
         await setState({ settings: { ...state.settings, [msg.key]: msg.value } });
         await recomputeBlocking();
@@ -463,6 +470,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (msg.includeHistory) {
           stats.usage = fresh.usage;
           stats.mediaUsage = fresh.mediaUsage;
+          stats.combinedUsage = fresh.combinedUsage;
+          stats.legacyCombined = fresh.legacyCombined;
           stats.trackingOn = fresh.settings.trackUsage;
         }
         sendResponse({ ok: true, stats });
@@ -471,7 +480,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case 'clearStats': {
         const gate = await requirePassword(state, msg.password);
         if (!gate.ok) return sendResponse(gate);
-        await setState({ usage: {}, session: null, mediaUsage: {}, mediaCoverage: {}, mediaAudible: {}, mediaCutoff: now() });
+        await setState({ usage: {}, combinedUsage: {}, legacyCombined: false, session: null, mediaUsage: {}, mediaCoverage: {}, mediaAudible: {}, mediaCutoff: now() });
         sendResponse({ ok: true });
         break;
       }
@@ -493,7 +502,13 @@ async function requirePassword(state, provided) {
 // ---------- lifecycle ----------
 function bootstrap(resetMedia = false) {
   return enqueue(async () => {
-    if (resetMedia) await setState({ mediaAudible: {}, mediaCoverage: {}, mediaCutoff: now() });
+    const state = await getState();
+    if (state.combinedUsage === null) {
+      const legacyCombined = Object.entries(state.mediaUsage).some(([day, sites]) =>
+        Object.keys(sites).some(domain => state.usage[day]?.[domain] > 0));
+      await setState({ combinedUsage: mergeHistory(state.usage, state.mediaUsage), combinedSince: now(), legacyCombined });
+    }
+    if (resetMedia) await setState({ mediaAudible: {}, mediaCoverage: {}, combinedCoverage: {}, mediaCutoff: now() });
     await recomputeBlocking();
     try { chrome.idle.setDetectionInterval(IDLE_THRESHOLD); } catch { /* ignore */ }
     chrome.alarms.create('flush', { periodInMinutes: 1 });

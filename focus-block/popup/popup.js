@@ -274,10 +274,7 @@ async function loadStats() {
 }
 
 function renderStats() {
-  const mediaMode = document.getElementById('statsMetric').value === 'media';
-  const { todayKey, todayTotal, weekTotal, days } = mediaMode ? statsCache.media : statsCache;
-  document.getElementById('todayMetricLabel').textContent = mediaMode ? 'Playback today' : 'Active today';
-  document.getElementById('statsBothTotals').textContent = `Today: ${fmtDuration(statsCache.todayTotal)} browsing · ${fmtDuration(statsCache.media.todayTotal)} playback`;
+  const { todayKey, todayTotal, weekTotal, days } = statsCache.combined;
   if (!days.some(d => d.key === selectedStatsDay)) selectedStatsDay = todayKey;
   const selected = days.find(d => d.key === selectedStatsDay);
 
@@ -311,7 +308,7 @@ function renderStats() {
   });
 
   document.getElementById('selectedDayTitle').textContent = selectedStatsDay === todayKey ? 'Today’s top sites' : `${dateLabel(selectedStatsDay)} · Top sites`;
-  document.getElementById('selectedDayTotal').textContent = `${fmtDuration(selected.total)} ${mediaMode ? 'playback' : 'active'} · ${selected.sites.length} sites`;
+  document.getElementById('selectedDayTotal').textContent = `${fmtDuration(selected.total)} total · ${selected.sites.length} sites`;
   // Selected day's sites
   const list = document.getElementById('topSites');
   list.innerHTML = '';
@@ -345,8 +342,6 @@ function renderStats() {
     list.appendChild(li);
   }
 }
-
-document.getElementById('statsMetric').addEventListener('change', () => { if (statsCache) renderStats(); });
 
 document.getElementById('openStats').addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html#stats') });

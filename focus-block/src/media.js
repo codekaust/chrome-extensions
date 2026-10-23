@@ -50,3 +50,12 @@ export function creditMedia(state, domain, intervals, now) {
   if (ranges.length) coverage[domain] = ranges;
   return { mediaUsage: usage, mediaCoverage: coverage };
 }
+
+// Browsing and media share this coverage ledger, regardless of report order.
+export function creditCombined(state, domain, intervals, now) {
+  const credited = creditMedia({
+    mediaUsage: state.combinedUsage || {}, mediaCoverage: state.combinedCoverage || {},
+    mediaCutoff: Math.max(state.mediaCutoff || 0, state.combinedSince || 0),
+  }, domain, intervals, now);
+  return { combinedUsage: credited.mediaUsage, combinedCoverage: credited.mediaCoverage };
+}
