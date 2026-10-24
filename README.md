@@ -8,7 +8,7 @@ independently as an unpacked extension.
 
 | Extension | Directory | What it does |
 | --- | --- | --- |
-| **FocusBlock** | [`focus-block/`](./focus-block) | Block time-wasting sites, run focus sessions, and take timed breaks (5 / 15 / 30 min). |
+| **FocusBlock** | [`focus-block/`](./focus-block) | Block time-wasting sites, set daily time limits, run focus sessions, and take timed breaks (5 / 15 / 30 min). |
 | **TabCopy** | [`tab-copy/`](./tab-copy) | Copy tab URLs/titles in any format (Link, Markdown, JSON, CSV, HTML…) for one tab, a window, or all windows. |
 | **PopIt** | [`pop-it/`](./pop-it) | Pop the current tab out into its own compact popup window with one click. |
 | **PaperTab** | [`paper-tab/`](./paper-tab) | A distraction-free New Tab notepad with live Markdown formatting that autosaves locally. |

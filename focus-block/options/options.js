@@ -1,4 +1,6 @@
 import { refreshStats } from './stats.js';
+import { LIMIT_PRESETS, limitRemaining } from '../src/limits.js';
+import { fmtDuration } from '../src/stats.js';
 const send = (msg) => chrome.runtime.sendMessage(msg);
 let state = null;
 
@@ -38,7 +40,8 @@ function gateError(msg) {
   const el = document.getElementById('gateError');
   el.textContent = msg; el.className = 'msg err'; el.classList.remove('hidden');
 }
-document.getElementById('gateCancel').addEventListener('click', closeGate);
+// Cancelling leaves storage untouched; re-render so switches snap back.
+document.getElementById('gateCancel').addEventListener('click', () => { closeGate(); if (state) render(); });
 document.getElementById('gateConfirm').addEventListener('click', () => gateCb?.(document.getElementById('gateInput').value));
 document.getElementById('gateInput').addEventListener('keydown', (e) => {
   if (e.key === 'Enter') gateCb?.(document.getElementById('gateInput').value);
@@ -63,7 +66,13 @@ function gatedSend(baseMsg, sub) {
 // ---------- general toggles ----------
 document.querySelectorAll('.toggle').forEach((t) => {
   t.addEventListener('change', async () => {
-    await send({ type: 'setSetting', key: t.dataset.setting, value: t.checked });
+    // Turning tracking off while time limits exist is password-gated.
+    const res = await gatedSend(
+      { type: 'setSetting', key: t.dataset.setting, value: t.checked },
+      'Enter your password to turn off usage tracking — it pauses your time limits.'
+    );
+    if (!res?.ok) t.checked = !t.checked; // cancelled: keep the switch truthful
+    await refresh();
   });
 });
 
@@ -104,13 +113,24 @@ document.getElementById('clearStats').addEventListener('click', async () => {
 // ---------- block list ----------
 document.getElementById('addSite').addEventListener('click', addSite);
 document.getElementById('newSite').addEventListener('keydown', (e) => { if (e.key === 'Enter') addSite(); });
+const newLimit = document.getElementById('newLimit');
+for (const min of LIMIT_PRESETS) newLimit.append(new Option(`${fmtDuration(min * 60)} a day`, min, min === 30, min === 30));
+document.getElementById('newMode').addEventListener('change', (e) => {
+  newLimit.classList.toggle('hidden', e.target.value !== 'limit');
+});
+
 async function addSite() {
   const input = document.getElementById('newSite');
   const mode = document.getElementById('newMode').value;
   const dom = normalize(input.value);
   if (!dom) return;
-  await send({ type: 'blockSite', domain: dom, mode });
-  input.value = '';
+  const minutes = mode === 'limit' ? Number(newLimit.value) : undefined;
+  // Re-adding an existing site under a looser mode is password-gated.
+  const res = await gatedSend(
+    { type: 'blockSite', domain: dom, mode, minutes },
+    `Enter your password to loosen how ${dom} is blocked.`
+  );
+  if (res?.ok) input.value = '';
   await refresh();
 }
 
@@ -122,12 +142,13 @@ async function removeSite(dom) {
   await refresh();
 }
 
-async function switchMode(dom, mode) {
-  // Switching an always-blocked site to focus-only loosens it, so the
-  // background password-gates it; gatedSend prompts only when needed.
+async function switchMode(dom, mode, minutes) {
+  // Loosening (always→focus/limit, limit→focus, a higher limit) is
+  // password-gated in the background; gatedSend prompts only when needed.
   await gatedSend(
-    { type: 'blockSite', domain: dom, mode },
-    `Enter your password to switch ${dom} to focus-only.`
+    { type: 'blockSite', domain: dom, mode, minutes },
+    mode === 'limit' ? `Enter your password to raise the limit on ${dom}.`
+      : `Enter your password to switch ${dom} to focus-only.`
   );
   await refresh();
 }
@@ -163,9 +184,54 @@ function renderOneList(list, ulId, emptyId, mode) {
   }
 }
 
+// Time-limited sites: today's usage, a limit picker, and the same actions.
+function renderLimitList() {
+  const ul = document.getElementById('limitList');
+  ul.innerHTML = '';
+  const limits = Object.entries(state.timeLimits || {});
+  document.getElementById('limitEmpty').classList.toggle('hidden', limits.length > 0);
+  document.getElementById('limitTrackingOff').classList.toggle(
+    'hidden', !limits.length || state.settings.trackUsage);
+  for (const [dom, minutes] of limits) {
+    const li = document.createElement('li');
+    const host = document.createElement('div');
+    host.className = 'host';
+    const img = document.createElement('img');
+    img.src = `https://www.google.com/s2/favicons?domain=${dom}&sz=64`;
+    const left = limitRemaining(state, dom, Date.now());
+    const used = document.createElement('span');
+    used.className = 'site-time';
+    used.textContent = left > 0 ? `${fmtDuration(minutes * 60 - left)} used today` : 'Limit reached today';
+    host.append(img, document.createTextNode(dom), used);
+
+    const actions = document.createElement('div');
+    actions.className = 'row-actions';
+    const pick = document.createElement('select');
+    pick.className = 'input select';
+    pick.setAttribute('aria-label', `Daily limit for ${dom}`);
+    const presets = [...new Set([...LIMIT_PRESETS, minutes])].sort((a, b) => a - b);
+    for (const min of presets) pick.append(new Option(`${fmtDuration(min * 60)} a day`, min, false, min === minutes));
+    pick.addEventListener('change', () => switchMode(dom, 'limit', Number(pick.value)));
+    const swap = document.createElement('button');
+    swap.className = 'linkbtn';
+    swap.textContent = 'Always';
+    swap.title = 'Block all the time';
+    swap.addEventListener('click', () => switchMode(dom, 'always'));
+    const rm = document.createElement('button');
+    rm.className = 'remove';
+    rm.textContent = 'Remove';
+    rm.addEventListener('click', () => removeSite(dom));
+    actions.append(pick, swap, rm);
+
+    li.append(host, actions);
+    ul.append(li);
+  }
+}
+
 function renderList() {
   renderOneList(state.blockedSites, 'alwaysList', 'alwaysEmpty', 'always');
   renderOneList(state.focusSites, 'focusList', 'focusEmpty', 'focus');
+  renderLimitList();
 }
 
 // ---------- render ----------

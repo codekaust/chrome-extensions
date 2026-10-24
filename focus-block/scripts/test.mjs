@@ -9,6 +9,7 @@ let installedHandler = null;
 const store = { usage: {'2020-01-01': {'legacy.example': 60}}, mediaUsage: {'2020-01-01': {'legacy.example': 90}} };
 let badgeText = '';
 const notifications = [];
+const alarmsCreated = {};    // name → { when, periodInMinutes }
 
 // controllable "browser state" for usage-tracking tests
 let mockWin = { id: 1, focused: true };
@@ -45,8 +46,8 @@ globalThis.chrome = {
     async setBadgeBackgroundColor() {},
   },
   alarms: {
-    async clear() {},
-    create() {},
+    async clear(name) { delete alarmsCreated[name]; },
+    create(name, info) { alarmsCreated[name] = info; },
     onAlarm: { addListener(fn) { alarmHandler = fn; } },
   },
   notifications: { create(_id, opts) { notifications.push(opts ?? _id); } },
@@ -301,6 +302,103 @@ await dispatch({ type: 'unblockSite', domain: 'twitter.com' });
 assert(!store.blockedSites.includes('twitter.com') && !store.focusSites.includes('twitter.com'),
   'unblock removes the site from both lists');
 
+// --- daily time limits ---
+console.log('daily time limits');
+{
+  const realNow = Date.now;
+  let clock = new Date(2026, 9, 23, 12).getTime();
+  Date.now = () => clock;
+  const day = '2026-10-23';
+  store.combinedUsage = { [day]: { 'reddit.com': 600 } };
+  store.session = null;
+  mockWin = { id: 1, focused: false }; // keep the live session out of the way
+
+  const bad = await dispatch({ type: 'blockSite', domain: 'reddit.com', mode: 'limit', minutes: 0 });
+  assert(bad.ok === false && !store.timeLimits?.['reddit.com'], 'an invalid limit is rejected');
+  await dispatch({ type: 'blockSite', domain: 'reddit.com', mode: 'limit', minutes: 30 });
+  assert(store.timeLimits['reddit.com'] === 30, 'limit stored in minutes');
+  assert(!store.blockedSites.includes('reddit.com') && !store.focusSites.includes('reddit.com'),
+    'a limited site lives only in the limit list');
+  assert(!blockedDomains().includes('reddit.com'), 'site is allowed while under its limit');
+  assert(alarmsCreated.recompute?.when === new Date(2026, 9, 24).getTime() + 500,
+    'a recompute is scheduled for midnight, when limits reset');
+
+  // the active session's projected run-out time drives the next recompute
+  mockWin = { id: 1, focused: true };
+  mockTabs = { 1: [{ active: true, url: 'https://reddit.com/r/all' }] };
+  await alarmHandler({ name: 'flush' });
+  assert(alarmsCreated.recompute?.when === clock + 1200_000 + 500,
+    'the alarm is set for the moment the in-use site runs out');
+
+  // the in-progress session is counted, and open tabs are sent to the block page
+  mockAllTabs = [{ id: 31, url: 'https://reddit.com/r/all' }, { id: 32, url: 'https://old.reddit.com/' }];
+  updatedTabs = [];
+  store.combinedUsage = { [day]: { 'reddit.com': 1790 } };
+  clock += 15_000;
+  await alarmHandler({ name: 'recompute' });
+  assert(blockedDomains().includes('reddit.com'), 'site is blocked once its limit is used up');
+  assert(updatedTabs.map((u) => u.id).join() === '31', 'open tabs on the site (not other subdomains) are redirected');
+  mockAllTabs = [];
+  mockWin = { id: 1, focused: false };
+  store.session = null;
+  store.combinedUsage = { [day]: { 'reddit.com': 1805 } }; // the session's time, flushed
+
+  // navigating there afterwards is caught by the grace-period guard
+  graceTimers = []; updatedTabs = [];
+  tabById[41] = { id: 41, url: 'https://reddit.com/' };
+  updatedHandler(41, { url: 'https://reddit.com/' }, { active: false });
+  await new Promise((r) => realSetTimeout(r, 0));
+  graceTimers.splice(0).forEach((fn) => fn());
+  await new Promise((r) => realSetTimeout(r, 0)); await new Promise((r) => realSetTimeout(r, 0));
+  assert(updatedTabs.some((u) => u.id === 41 && u.url.includes('site=reddit.com')), 'new visits are blocked after the grace');
+
+  // a timed break works on a spent limit
+  await dispatch({ type: 'tempUnblock', domain: 'reddit.com', minutes: 5 });
+  assert(!blockedDomains().includes('reddit.com'), 'a break lifts a spent limit');
+  await dispatch({ type: 'reblockNow', domain: 'reddit.com' });
+  assert(blockedDomains().includes('reddit.com'), 'Block now ends the break');
+
+  // raising a limit unblocks; lowering re-blocks
+  await dispatch({ type: 'blockSite', domain: 'reddit.com', mode: 'limit', minutes: 60 });
+  assert(!blockedDomains().includes('reddit.com'), 'raising the limit frees the site');
+  await dispatch({ type: 'blockSite', domain: 'reddit.com', mode: 'limit', minutes: 15 });
+  assert(blockedDomains().includes('reddit.com'), 'lowering the limit below usage blocks it');
+
+  // midnight resets every limit
+  clock = new Date(2026, 9, 24, 0, 0, 1).getTime();
+  await alarmHandler({ name: 'recompute' });
+  assert(!blockedDomains().includes('reddit.com'), 'limits reset at midnight');
+
+  // focus sessions block limited sites even with time left
+  await dispatch({ type: 'startFocus', minutes: 25 });
+  assert(blockedDomains().includes('reddit.com'), 'limited sites are blocked during focus');
+  const noBreak = await dispatch({ type: 'tempUnblock', domain: 'reddit.com', minutes: 5 });
+  assert(noBreak.ok === false, 'no breaks on limited sites during focus');
+  await dispatch({ type: 'stopFocus' });
+  assert(!blockedDomains().includes('reddit.com'), 'focus ending frees a limited site with time left');
+
+  // clearing history resets today's usage
+  store.combinedUsage = { '2026-10-24': { 'reddit.com': 5000 } };
+  await alarmHandler({ name: 'recompute' });
+  assert(blockedDomains().includes('reddit.com'), 'blocked again after heavy use');
+  await dispatch({ type: 'clearStats' });
+  assert(!blockedDomains().includes('reddit.com'), 'clearing usage history re-evaluates limits');
+
+  // switching modes keeps a site in exactly one list
+  await dispatch({ type: 'blockSite', domain: 'reddit.com', mode: 'always' });
+  assert(store.blockedSites.includes('reddit.com') && !store.timeLimits['reddit.com'], 'limit → always moves the site');
+  await dispatch({ type: 'blockSite', domain: 'reddit.com', mode: 'limit', minutes: 20 });
+  assert(!store.blockedSites.includes('reddit.com') && store.timeLimits['reddit.com'] === 20, 'always → limit moves it back');
+  await dispatch({ type: 'unblockSite', domain: 'reddit.com' });
+  assert(!('reddit.com' in store.timeLimits), 'unblock removes the limit');
+
+  Date.now = realNow;
+  mockWin = { id: 1, focused: true };
+  mockTabs = { 1: [{ active: true, url: 'https://example.com/watch' }] };
+  store.session = null;
+  updatedTabs = [];
+}
+
 // --- already-open tabs get redirected when a rule starts blocking them ---
 console.log('enforce open tabs');
 mockAllTabs = [
@@ -427,6 +525,23 @@ assert(store.focusSites.includes('imgur.com') && !store.blockedSites.includes('i
 // adding a brand-new focus-only site needs no password (not a loosening)
 const addFocus = await dispatch({ type: 'blockSite', domain: 'tiktok.com', mode: 'focus' });
 assert(addFocus.ok === true, 'adding a new focus-only site needs no password');
+// time limits: setting or lowering is free, raising or loosening to one is gated
+const addLimit = await dispatch({ type: 'blockSite', domain: 'twitch.tv', mode: 'limit', minutes: 30 });
+assert(addLimit.ok === true, 'adding a time limit needs no password');
+const lower = await dispatch({ type: 'blockSite', domain: 'twitch.tv', mode: 'limit', minutes: 15 });
+assert(lower.ok === true && store.timeLimits['twitch.tv'] === 15, 'lowering a limit needs no password');
+const raise = await dispatch({ type: 'blockSite', domain: 'twitch.tv', mode: 'limit', minutes: 120 });
+assert(raise.ok === false && raise.needsPassword && store.timeLimits['twitch.tv'] === 15, 'raising a limit needs the password');
+const toFocus = await dispatch({ type: 'blockSite', domain: 'twitch.tv', mode: 'focus' });
+assert(toFocus.ok === false && store.timeLimits['twitch.tv'] === 15, 'limit → focus-only needs the password');
+await dispatch({ type: 'blockSite', domain: 'vimeo.com', mode: 'always' });
+const alwaysToLimit = await dispatch({ type: 'blockSite', domain: 'vimeo.com', mode: 'limit', minutes: 30 });
+assert(alwaysToLimit.ok === false && store.blockedSites.includes('vimeo.com'), 'always → limit needs the password');
+const trackOff = await dispatch({ type: 'setSetting', key: 'trackUsage', value: false });
+assert(trackOff.ok === false && store.settings.trackUsage === true, 'turning off tracking with limits set needs the password');
+const trackOffPwd = await dispatch({ type: 'setSetting', key: 'trackUsage', value: false, password: 'hunter2' });
+assert(trackOffPwd.ok === true && store.settings.trackUsage === false, 'the password allows turning tracking off');
+await dispatch({ type: 'setSetting', key: 'trackUsage', value: true });
 
 const changeNoOld = await dispatch({ type: 'setPassword', password: 'new' });
 assert(changeNoOld.ok === false, 'changing password requires the old one');

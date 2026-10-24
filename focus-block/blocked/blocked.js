@@ -1,3 +1,6 @@
+import { isLimitReached, nextMidnight } from '../src/limits.js';
+import { fmtDuration } from '../src/stats.js';
+
 const QUOTES = [
   'The successful warrior is the average person, with laser-like focus.',
   'You will never reach your destination if you stop to throw stones at every dog that barks.',
@@ -24,11 +27,20 @@ async function boot() {
   const state = res.state;
   const focusActive = state.focus.active && state.focus.endsAt > Date.now();
   const isFocusOnly = (state.focusSites || []).includes(site);
+  const limit = state.timeLimits?.[site];
   hasPassword = !!state.password;
   // Focus-only sites are blocked *because* a session is running → no breaks.
-  // Always-blocked sites allow timed breaks, unless a focus session is on.
+  // Always-blocked and time-limited sites allow timed breaks, unless a focus
+  // session is on.
   const subEl = document.querySelector('.sub');
   if (isFocusOnly) subEl.textContent = 'This site is blocked during your focus session.';
+  if (limit && !focusActive) {
+    document.querySelector('h1').textContent = 'Time’s up for today.';
+    subEl.textContent = `You’ve used your ${fmtDuration(limit * 60)} daily limit for this site. It resets at midnight.`;
+    document.getElementById('breakLabel').textContent = 'Need a little more? Take a timed break:';
+  } else if (limit) {
+    subEl.textContent = 'This site is blocked during your focus session.';
+  }
   // Break + list-management are offered only for always-blocked sites while no
   // focus session runs — during focus everything stays locked.
   const unlocked = !focusActive && !isFocusOnly;
@@ -38,6 +50,7 @@ async function boot() {
   // A password gates any change to how the site is blocked (same as the popup).
   document.getElementById('pwdRow').classList.toggle('hidden', !hasPassword);
   document.getElementById('focusOnlyBtn').classList.toggle('hidden', isFocusOnly);
+  if (limit) document.getElementById('unblockBtn').textContent = 'Remove time limit';
   if (state.settings?.cleanBlockPage) {
     document.getElementById('quote').classList.add('hidden');
   }
@@ -47,6 +60,8 @@ async function boot() {
     const msLeft = state.focus.endsAt - Date.now();
     setTimeout(maybeRedirect, Math.max(0, msLeft) + 300);
   }
+  // Likewise a time limit frees up at midnight.
+  if (limit) setTimeout(maybeRedirect, nextMidnight(Date.now()) - Date.now() + 1000);
 }
 
 // Is this site still blocked right now, given focus + temp breaks? Mirrors the
@@ -60,6 +75,12 @@ function stillBlocked(state) {
     return !(until && until > t);                 // allowed only during an active break
   }
   if ((state.focusSites || []).includes(site)) return focusActive;
+  if (state.timeLimits?.[site]) {
+    if (focusActive) return true;
+    const until = state.tempUnblocks?.[site];
+    if (until && until > t) return false;
+    return isLimitReached(state, site, t);        // frees up at midnight
+  }
   return false;
 }
 
@@ -96,7 +117,9 @@ async function maybeRedirect() {
 // unrelated writes like usage/session, which happen every minute. This keeps
 // the page still; it only leaves when blocking actually lifts.
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.focus || changes.blockedSites || changes.focusSites || changes.tempUnblocks) {
+  // effectiveBlocked covers a time limit resetting (midnight, cleared history).
+  if (changes.focus || changes.blockedSites || changes.focusSites || changes.tempUnblocks ||
+      changes.timeLimits || changes.effectiveBlocked) {
     maybeRedirect();
   }
 });

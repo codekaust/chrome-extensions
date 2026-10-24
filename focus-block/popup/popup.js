@@ -1,4 +1,5 @@
 import { fmtDuration, dateLabel } from '../src/stats.js';
+import { limitRemaining } from '../src/limits.js';
 const send = (msg) => chrome.runtime.sendMessage(msg);
 
 let currentHost = null;   // normalized domain of active tab
@@ -7,6 +8,7 @@ let state = null;
 let countdownTimer = null;
 let breakTimer = null;
 let selectedDuration = 25;
+let limitPickerOpen = false; // "Set a daily time limit" reveals the presets
 
 function fmt(ms) {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -80,8 +82,14 @@ function renderBlockTab() {
   const tempInfo = document.getElementById('tempInfo');
   const favicon = document.getElementById('siteFavicon');
   const blockNowBtn = document.getElementById('blockNow');
+  const limitAction = document.getElementById('limitAction');
+  const limitOptions = document.getElementById('limitOptions');
+  const limitTrack = document.getElementById('limitTrack');
 
   if (breakTimer) { clearInterval(breakTimer); breakTimer = null; }
+  limitAction.classList.add('hidden');
+  limitOptions.classList.add('hidden');
+  limitTrack.classList.add('hidden');
 
   if (!currentHost) {
     hostEl.textContent = 'No site';
@@ -99,11 +107,13 @@ function renderBlockTab() {
     `url(https://www.google.com/s2/favicons?domain=${currentHost}&sz=64)`;
 
   const secondaryBtn = document.getElementById('secondaryAction');
+  const limit = state.timeLimits?.[currentHost];
   const mode = state.blockedSites.includes(currentHost) ? 'always'
+    : limit ? 'limit'
     : state.focusSites.includes(currentHost) ? 'focus' : null;
   const tempUntil = state.tempUnblocks?.[currentHost];
   const focusActive = state.focus.active && state.focus.endsAt > Date.now();
-  const onBreak = mode === 'always' && !focusActive && tempUntil && tempUntil > Date.now();
+  const onBreak = (mode === 'always' || mode === 'limit') && !focusActive && tempUntil && tempUntil > Date.now();
 
   toggleBtn.classList.remove('hidden');
   secondaryBtn.classList.remove('hidden');
@@ -111,19 +121,33 @@ function renderBlockTab() {
   tempOptions.classList.add('hidden');
   blockNowBtn.classList.add('hidden');
 
+  // A break is offered on always-blocked sites and on spent time limits.
+  const showBreak = () => {
+    statusEl.textContent = 'On a temporary break';
+    statusEl.className = 'site-status allowed';
+    const tick = () => {
+      const left = tempUntil - Date.now();
+      if (left <= 0) { clearInterval(breakTimer); breakTimer = null; refresh(); return; }
+      tempInfo.textContent = `⏱ Re-blocks in ${fmt(left)}`;
+    };
+    tick();
+    breakTimer = setInterval(tick, 1000);
+    tempInfo.classList.remove('hidden');
+    blockNowBtn.classList.remove('hidden');
+  };
+
+  if (mode !== 'limit') {
+    limitAction.classList.remove('hidden');
+    limitAction.querySelector('span').textContent =
+      mode === 'always' ? 'Switch to a daily time limit' : 'Set a daily time limit';
+    limitOptions.classList.toggle('hidden', !limitPickerOpen);
+    document.getElementById('limitLabel').textContent = 'Allow this site for a set time each day:';
+    markLimitPreset(null);
+  }
+
   if (mode === 'always') {
     if (onBreak) {
-      statusEl.textContent = 'On a temporary break';
-      statusEl.className = 'site-status allowed';
-      const tick = () => {
-        const left = tempUntil - Date.now();
-        if (left <= 0) { clearInterval(breakTimer); breakTimer = null; refresh(); return; }
-        tempInfo.textContent = `⏱ Re-blocks in ${fmt(left)}`;
-      };
-      tick();
-      breakTimer = setInterval(tick, 1000);
-      tempInfo.classList.remove('hidden');
-      blockNowBtn.classList.remove('hidden');
+      showBreak();
     } else {
       statusEl.textContent = 'Blocked always';
       statusEl.className = 'site-status blocked';
@@ -132,6 +156,46 @@ function renderBlockTab() {
     secondaryBtn.textContent = 'Switch to Focus-only';
     secondaryBtn.dataset.action = 'blockFocus';
     toggleBtn.textContent = 'Unblock permanently';
+    toggleBtn.className = 'btn btn-primary danger';
+    toggleBtn.dataset.action = 'unblock';
+  } else if (mode === 'limit') {
+    const left = limitRemaining(state, currentHost, Date.now());
+    if (focusActive) {
+      statusEl.textContent = 'Blocked during Focus';
+      statusEl.className = 'site-status blocked';
+    } else if (onBreak) {
+      showBreak();
+    } else if (left <= 0) {
+      statusEl.textContent = 'Daily limit reached';
+      statusEl.className = 'site-status blocked';
+      tempOptions.classList.remove('hidden');
+    } else {
+      // Count down live while the popup is open — the site is in use right now.
+      const tick = () => {
+        const remaining = limitRemaining(state, currentHost, Date.now());
+        if (remaining <= 0) { clearInterval(breakTimer); breakTimer = null; refresh(); return; }
+        statusEl.textContent = `${fmtDuration(remaining)} left today`;
+        setLimitBar(limit, remaining);
+        tempInfo.textContent = limitUsedText(limit, remaining);
+      };
+      statusEl.className = 'site-status allowed';
+      tick();
+      breakTimer = setInterval(tick, 1000);
+    }
+    setLimitBar(limit, left);
+    limitTrack.classList.remove('hidden');
+    if (!onBreak) {
+      tempInfo.textContent = limitUsedText(limit, left);
+      tempInfo.classList.remove('hidden');
+    }
+    document.getElementById('limitLabel').textContent = 'Daily limit:';
+    markLimitPreset(limit);
+    // Once spent, a timed break is the way to get more time — keeping the
+    // picker too would push the popup past Chrome's height cap.
+    limitOptions.classList.toggle('hidden', !focusActive && !onBreak && left <= 0);
+    secondaryBtn.textContent = 'Block always instead';
+    secondaryBtn.dataset.action = 'blockAlways';
+    toggleBtn.textContent = 'Remove limit';
     toggleBtn.className = 'btn btn-primary danger';
     toggleBtn.dataset.action = 'unblock';
   } else if (mode === 'focus') {
@@ -156,6 +220,22 @@ function renderBlockTab() {
     toggleBtn.className = 'btn btn-primary';
     toggleBtn.dataset.action = 'blockAlways';
   }
+}
+
+function limitUsedText(limit, left) {
+  return `${fmtDuration(limit * 60 - left)} of ${fmtDuration(limit * 60)} used · resets at midnight`;
+}
+
+function setLimitBar(limit, left) {
+  const used = Math.min(1, 1 - left / (limit * 60));
+  const track = document.getElementById('limitTrack');
+  document.getElementById('limitFill').style.width = `${used * 100}%`;
+  track.classList.toggle('over', left <= 0);
+}
+
+function markLimitPreset(minutes) {
+  document.querySelectorAll('#limitOptions .dur').forEach((b) =>
+    b.classList.toggle('active', Number(b.dataset.limit) === minutes));
 }
 
 // Perform a block-tab action, then refresh the popup UI. The tab itself is not
@@ -197,7 +277,28 @@ document.getElementById('blockNow').addEventListener('click', async () => {
   // page — no navigation needed from here.
 });
 
-document.querySelectorAll('.chip').forEach((chip) => {
+document.getElementById('limitAction').addEventListener('click', () => {
+  limitPickerOpen = !limitPickerOpen;
+  document.getElementById('limitOptions').classList.toggle('hidden', !limitPickerOpen);
+});
+
+// Setting a limit on a new site, or lowering one, is free; raising it or
+// loosening an always-blocked site to a limit is password-gated in the worker.
+document.querySelectorAll('#limitOptions .dur').forEach((btn) => {
+  btn.addEventListener('click', async () => {
+    if (!currentHost) return;
+    const minutes = Number(btn.dataset.limit);
+    const res = await gatedSend(
+      { type: 'blockSite', domain: currentHost, mode: 'limit', minutes },
+      `Enter your password to loosen the limit on ${currentHost}.`
+    );
+    if (!res?.ok) return;
+    limitPickerOpen = false;
+    await refresh();
+  });
+});
+
+document.querySelectorAll('#tempOptions .chip').forEach((chip) => {
   chip.addEventListener('click', async () => {
     const minutes = Number(chip.dataset.min);
     const res = await send({ type: 'tempUnblock', domain: currentHost, minutes });
@@ -212,9 +313,9 @@ document.querySelectorAll('.chip').forEach((chip) => {
 });
 
 // ---------- focus tab ----------
-document.querySelectorAll('.dur').forEach((btn) => {
+document.querySelectorAll('#tab-focus .dur').forEach((btn) => {
   btn.addEventListener('click', () => {
-    document.querySelectorAll('.dur').forEach((b) => b.classList.remove('active'));
+    document.querySelectorAll('#tab-focus .dur').forEach((b) => b.classList.remove('active'));
     btn.classList.add('active');
     selectedDuration = Number(btn.dataset.min);
   });

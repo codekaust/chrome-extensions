@@ -62,6 +62,11 @@ All commands run from inside an extension's directory (e.g. `cd focus-block`):
   becomes blocked, and the block page redirects *itself* back to the site
   (storage `onChanged` on focus/list/temp keys) when it becomes unblocked. No
   surface reloads a tab speculatively.
+  Three modes, each site in exactly one list: `blockedSites` (always),
+  `focusSites` (focus only), `timeLimits` (`{domain: minutesPerDay}` — blocked
+  once today's merged usage reaches it, until midnight; also blocked in focus).
+  Limit math is pure in `src/limits.js` (shared with popup/options/block page);
+  `isLoosening` decides password gating for any mode/limit change.
   Focus/break timers via `alarms`, and per-domain active-time usage tracking
   (gated on window focus + http(s) tab + non-idle input). Has a redirect
   `blocked/` page. State shape and constants are documented at the top of

@@ -95,14 +95,18 @@
       <p class="muted">
         Add domains to block. <strong>Always</strong> blocks a site all the time;
         <strong>During Focus</strong> lets you use it normally but blocks it while a
-        focus session runs. Subdomains are covered automatically.
+        focus session runs; <strong>Daily limit</strong> allows a site for a set time
+        each day, then blocks it until midnight. Each entry covers that exact site
+        (and its <code>www.</code>) — add subdomains separately.
       </p>
       <div class="add-row">
         <input type="text" id="newSite" class="input" placeholder="e.g. youtube.com" />
         <select id="newMode" class="input select">
           <option value="always">Always</option>
           <option value="focus">During Focus</option>
+          <option value="limit">Daily limit</option>
         </select>
+        <select id="newLimit" class="input select hidden" aria-label="Daily limit"></select>
         <button id="addSite" class="btn btn-primary">Add</button>
       </div>
 
@@ -119,6 +123,15 @@
       </h3>
       <ul id="focusList" class="site-list"></ul>
       <p id="focusEmpty" class="muted small hidden">No focus-only sites yet.</p>
+
+      <h3 class="list-title mt">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2h4"/><path d="M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+        Daily time limits
+      </h3>
+      <p class="muted small">Time counts while you actively use the site or it plays media, and resets at midnight. Limited sites are also blocked during focus sessions.</p>
+      <p id="limitTrackingOff" class="warn hidden">Usage tracking is off, so time limits can’t count down. Turn it on in General.</p>
+      <ul id="limitList" class="site-list"></ul>
+      <p id="limitEmpty" class="muted small hidden">No time-limited sites yet.</p>
     </section>
 
     <!-- FOCUS -->
@@ -126,8 +139,8 @@
       <h2>Focus Mode</h2>
       <p class="muted">
         Start a focus session from the toolbar popup. While a session is running,
-        both your <strong>always-blocked</strong> and <strong>focus-only</strong>
-        sites are locked and temporary breaks are disabled — so you can’t talk
+        your <strong>always-blocked</strong>, <strong>focus-only</strong> and
+        <strong>time-limited</strong> sites are locked and temporary breaks are disabled — so you can’t talk
         yourself into “just five minutes.”
       </p>
       <div id="focusState" class="focus-state"></div>

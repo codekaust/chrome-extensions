@@ -42,6 +42,17 @@
       <div id="siteHost" class="site-host">—</div>
       <div id="siteStatus" class="site-status">Checking…</div>
       <div id="tempInfo" class="temp-info hidden"></div>
+      <div id="limitTrack" class="site-track limit-track hidden"><div id="limitFill" class="site-fill"></div></div>
+    </div>
+
+    <div id="limitOptions" class="temp-options hidden">
+      <div class="temp-label" id="limitLabel">Allow this site for a set time each day:</div>
+      <div class="temp-buttons limit-buttons">
+        <button class="dur" data-limit="15">15m</button>
+        <button class="dur" data-limit="30">30m</button>
+        <button class="dur" data-limit="60">1h</button>
+        <button class="dur" data-limit="120">2h</button>
+      </div>
     </div>
 
     <div id="tempOptions" class="temp-options hidden">
@@ -61,6 +72,10 @@
       <button id="changeSites" class="btn btn-ghost">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         Change blocked sites
+      </button>
+      <button id="limitAction" class="btn btn-ghost hidden">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 2h4"/><path d="M12 14l3-3"/><circle cx="12" cy="14" r="8"/></svg>
+        <span>Set a daily time limit</span>
       </button>
       <button id="secondaryAction" class="btn btn-soft hidden"></button>
       <button id="toggleBlock" class="btn btn-primary">Block this site</button>

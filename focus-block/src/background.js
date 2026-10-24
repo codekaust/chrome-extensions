@@ -1,11 +1,13 @@
 import { dayKey, buildStats, mergeHistory } from './stats.js';
 import { creditMedia, creditCombined } from './media.js';
+import { clampLimit, isLimitReached, isLoosening, limitRemaining, nextMidnight } from './limits.js';
 
 // FocusBlock service worker — owns all state, blocking, timers & notifications.
 
 const DEFAULTS = {
   blockedSites: [],          // always blocked — hostnames, e.g. "youtube.com"
   focusSites: [],            // blocked only while a focus session is active
+  timeLimits: {},            // { hostname: minutesPerDay } — blocked once today's usage hits it
   tempUnblocks: {},          // { hostname: endsAtEpochMs }
   focus: { active: false, endsAt: null, durationMin: 25 },
   settings: {
@@ -156,13 +158,19 @@ async function updateSession() {
   await flushUsage(t);
   const domain = await computeActiveDomain();
   await setState({ session: domain ? { domain, since: t } : null });
+  // A limit can run out mid-session; re-check so the exhaustion alarm follows
+  // whichever site is being used now.
+  const { timeLimits } = await getState();
+  if (Object.keys(timeLimits).length) await recomputeBlocking();
 }
 
 // ---------- rule computation ----------
 // The set of domains that should be blocked right now, given focus + temp breaks:
 //  • always-blocked sites: enforced always (minus active temp-breaks, which
 //    are ignored while a focus session runs);
-//  • focus-only sites: enforced only while a focus session is active.
+//  • focus-only sites: enforced only while a focus session is active;
+//  • time-limited sites: enforced once today's usage reaches the limit (minus
+//    temp-breaks), and always while a focus session runs.
 export function computeEffectiveBlocked(state, t) {
   const focusActive = state.focus.active && state.focus.endsAt && state.focus.endsAt > t;
   const temp = state.tempUnblocks || {};
@@ -176,6 +184,13 @@ export function computeEffectiveBlocked(state, t) {
     for (const dom of state.focusSites) {
       if (!effective.includes(dom)) effective.push(dom);
     }
+  }
+  for (const dom of Object.keys(state.timeLimits || {})) {
+    if (effective.includes(dom)) continue;
+    if (focusActive) { effective.push(dom); continue; }
+    const until = temp[dom];
+    if (until && until > t) continue;
+    if (isLimitReached(state, dom, t)) effective.push(dom);
   }
   return effective;
 }
@@ -236,7 +251,22 @@ async function recomputeBlocking() {
   if (setChanged) await setState({ effectiveBlocked: effective });
 
   await updateBadge(state.settings, focusActive, effective.length);
-  await scheduleNextAlarm(temp, focus);
+  await scheduleNextAlarm(temp, focus, limitTimes(state, effective, t));
+}
+
+// When a time limit can next change a site's block state: the moment the site
+// in active use runs out, and midnight (when every limit resets). Background
+// playback is caught by the minute-by-minute flush instead.
+function limitTimes(state, effective, t) {
+  const doms = Object.keys(state.timeLimits || {});
+  if (!doms.length) return [];
+  const times = [nextMidnight(t)];
+  const dom = state.session?.domain;
+  if (dom && !effective.includes(dom)) {
+    const left = limitRemaining(state, dom, t);
+    if (left !== null) times.push(t + left * 1000);
+  }
+  return times;
 }
 
 // Send every open http(s) tab that's on a currently-blocked domain to the block
@@ -310,9 +340,9 @@ async function updateBadge(settings, focusActive, count) {
   }
 }
 
-async function scheduleNextAlarm(temp, focus) {
+async function scheduleNextAlarm(temp, focus, extra = []) {
   await chrome.alarms.clear('recompute');
-  const times = [];
+  const times = [...extra];
   for (const endsAt of Object.values(temp)) times.push(endsAt);
   if (focus.active && focus.endsAt) times.push(focus.endsAt);
   if (times.length) {
@@ -356,20 +386,28 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       case 'blockSite': {
         const dom = normalizeDomain(msg.domain);
         if (!dom) return sendResponse({ ok: false, error: 'Invalid site' });
-        const mode = msg.mode === 'focus' ? 'focus' : 'always';
-        // Moving an always-blocked site to focus-only makes it reachable outside
-        // focus sessions — a form of unblocking — so it's password-gated, exactly
-        // like unblockSite. Adding a new site or tightening focus→always is free.
-        if (mode === 'focus' && state.blockedSites.includes(dom)) {
+        const mode = ['focus', 'limit'].includes(msg.mode) ? msg.mode : 'always';
+        const minutes = mode === 'limit' ? clampLimit(msg.minutes) : null;
+        if (mode === 'limit' && !minutes) return sendResponse({ ok: false, error: 'Invalid time limit' });
+        // Any change that makes a site more reachable — always→limit/focus,
+        // limit→focus, or raising a limit — is a form of unblocking, so it's
+        // password-gated exactly like unblockSite. Adding or tightening is free.
+        const current = state.blockedSites.includes(dom) ? { mode: 'always' }
+          : state.timeLimits[dom] ? { mode: 'limit', minutes: state.timeLimits[dom] }
+          : state.focusSites.includes(dom) ? { mode: 'focus' } : null;
+        if (isLoosening(current, { mode, minutes })) {
           const gate = await requirePassword(state, msg.password);
           if (!gate.ok) return sendResponse(gate);
         }
-        // a site lives in exactly one list — moving modes removes it from the other
+        // a site lives in exactly one list — moving modes removes it from the others
         const blocked = state.blockedSites.filter((d) => d !== dom);
         const focusList = state.focusSites.filter((d) => d !== dom);
+        const timeLimits = { ...state.timeLimits };
+        delete timeLimits[dom];
         if (mode === 'always') blocked.push(dom);
-        else focusList.push(dom);
-        await setState({ blockedSites: blocked, focusSites: focusList });
+        else if (mode === 'focus') focusList.push(dom);
+        else timeLimits[dom] = minutes;
+        await setState({ blockedSites: blocked, focusSites: focusList, timeLimits });
         await recomputeBlocking();
         sendResponse({ ok: true, mode });
         break;
@@ -380,9 +418,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         if (!gate.ok) return sendResponse(gate);
         const list = state.blockedSites.filter((d) => d !== dom);
         const focusList = state.focusSites.filter((d) => d !== dom);
+        const timeLimits = { ...state.timeLimits };
+        delete timeLimits[dom];
         const temp = { ...state.tempUnblocks };
         delete temp[dom];
-        await setState({ blockedSites: list, focusSites: focusList, tempUnblocks: temp });
+        await setState({ blockedSites: list, focusSites: focusList, timeLimits, tempUnblocks: temp });
         await recomputeBlocking();
         sendResponse({ ok: true });
         break;
@@ -436,6 +476,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         break;
       }
       case 'setSetting': {
+        // Time limits are measured by usage tracking — switching it off would
+        // silently disable them, so it's gated like any other unblock.
+        if (msg.key === 'trackUsage' && !msg.value && Object.keys(state.timeLimits).length) {
+          const gate = await requirePassword(state, msg.password);
+          if (!gate.ok) return sendResponse(gate);
+        }
         if (msg.key === 'trackUsage') {
           await updateSession();
           await updateMediaAudible();
@@ -481,6 +527,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         const gate = await requirePassword(state, msg.password);
         if (!gate.ok) return sendResponse(gate);
         await setState({ usage: {}, combinedUsage: {}, legacyCombined: false, session: null, mediaUsage: {}, mediaCoverage: {}, mediaAudible: {}, mediaCutoff: now() });
+        await recomputeBlocking(); // cleared usage also resets today's limits
         sendResponse({ ok: true });
         break;
       }

@@ -13,9 +13,11 @@ ever leaving your machine.
 
 ## Features
 
-- **Two block modes** — block a site **Always** (locked all the time) or
+- **Three block modes** — block a site **Always** (locked all the time),
   **During Focus only** (usable normally, but locked whenever a focus session is
-  running). Set it in one click from the popup, or manage both lists in Settings.
+  running), or give it a **Daily time limit** (15m / 30m / 1h / 2h from the
+  popup; more presets in Settings). Set it in one click from the popup, or manage
+  all three lists in Settings.
   An entry blocks exactly that site (`www.` included): blocking `youtube.com`
   leaves `music.youtube.com` alone — add a subdomain as its own entry to block it.
 - **Redirect-friendly** — a blocked site gets a 3-second grace period before
@@ -24,6 +26,13 @@ ever leaving your machine.
 - **A calm block page** — blocked sites redirect to a friendly page with a
   focus quote (switchable to a clean, quote-free page in Settings). Take a break
   or unblock from there and you land right back on the exact page you wanted.
+- **Daily time limits** — a limited site works normally until today's time on
+  it (active browsing plus media playback, the same total Stats shows) reaches
+  its limit; then every tab on it goes to the block page until midnight. The
+  popup shows time left with a live countdown and progress bar. A spent limit
+  still allows a timed break, and limited sites are also locked during focus.
+  Raising a limit, loosening a site to a limit, or turning off usage tracking
+  (which limits rely on) is password-gated.
 - **Timed breaks** — need a site for a minute? Unblock it for **5, 15, or 30
   minutes** straight from the popup or the block page. It re-blocks itself
   automatically when time's up.
@@ -94,6 +103,10 @@ whenever anything changes (list edits, breaks, focus start/end):
   break ends), tabs already on it are sent to the block page immediately — once.
 - **Unblocking.** When a site becomes allowed (break, focus ends, removed from
   the list), the block page sends itself back to the original URL.
+- **Time limits.** Usage is checked on every session change and the
+  minute-by-minute flush, and an alarm is set for the exact moment the site in
+  use runs out (and for midnight, when every limit resets). The pure helpers
+  live in `src/limits.js`, shared by the worker, popup, options and block page.
 - Timed breaks and focus sessions end via `chrome.alarms`; while Focus Mode is
   active, all breaks are ignored so the full list stays locked.
 
@@ -108,7 +121,8 @@ focus-block/
 ├── manifest.json          # MV3 manifest
 ├── DESIGN.md              # the design system every surface follows
 ├── src/
-│   └── background.js       # service worker: state, rules, timers, usage, messaging
+│   ├── background.js       # service worker: state, rules, timers, usage, messaging
+│   └── limits.js           # pure daily-time-limit helpers (shared by every surface)
 ├── styles/
 │   └── app.css             # shared design-system stylesheet (tokens + components)
 ├── popup/                  # toolbar popup (Block · Focus · Stats tabs)
